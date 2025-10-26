@@ -94,7 +94,7 @@ export interface IModifiedBatch {
 export interface ITrackedTable {
     /**
      * Get the next modified batch of items that need to be written to the storage
-     * @param maxItems Maximum number of items to include in the batch (defaults to mac available items)
+     * @param maxItems Maximum number of items to include in the batch (defaults to max available items)
      */
     nextModifiedBatch(maxItems?: number): IModifiedBatch;
 }
