@@ -523,7 +523,7 @@ export class Table<T> implements ITable<T> {
         }
 
         /*
-         * Case 1: Un-materialize the view if following conditions are met:
+         * Case 2: Un-materialize the view if following conditions are met:
          * 1. The view is materialized (i.e., _view is not null).
          * 2. No filter and comparator is defined OR the table has sub-partitions.
          */
