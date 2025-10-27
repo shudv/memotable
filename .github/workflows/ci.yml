@@ -47,23 +47,8 @@ jobs:
             - name: Type check
               run: pnpm typecheck
 
-            - name: Run tests with coverage
-              run: pnpm test -- --coverage --reporter=json --reporter=default --outputFile=test-results.json
-
-            - name: Test Report
-              uses: dorny/test-reporter@v1
-              if: always()
-              with:
-                  name: Test Results
-                  path: test-results.json
-                  reporter: vitest-json
-
-            - name: Coverage Report
-              uses: davelosert/vitest-coverage-report-action@v2
-              if: always()
-              with:
-                  json-summary-path: ./coverage/coverage-summary.json
-                  json-final-path: ./coverage/coverage-final.json
+            - name: Run tests
+              run: pnpm test
 
             - name: Build
               run: pnpm build
