@@ -5,7 +5,8 @@
 [![CI](https://github.com/shudv/memotable/actions/workflows/ci.yml/badge.svg)](https://github.com/shudv/memotable/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A tiny reactive data engine for JavaScript that lets you build **derived**, **indexed**, and **materialized** views over mutable collections — in about **2 KB**.
+
+A tiny, zero-dependency, reactive data structure primitive for JavaScript that lets you build **derived**, **indexed**, and **materialized** views over mutable collections — in about **2 KBs**.
 
 ---
 
