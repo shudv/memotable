@@ -36,6 +36,7 @@ It’s built for scenarios where you maintain large collections and want derived
 - **Incremental updates** – Changes propagate only to affected partitions, never across the whole tree.  
 - **Subscriptions** – Components (or consumers) can subscribe to any partition and get notified precisely when it changes.  
 - **Change tracking** – Built-in delta tracking via `nextDelta()` makes it easy to persist or synchronize updates.
+- **Batching** – Multiple updates can be applied in a single batched operation using the `runBatch() API`, triggering just one round of index, view recalculation and subscriber notification.
 
 ---
 
