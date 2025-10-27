@@ -15,7 +15,7 @@ We don't. I created this library not because someone might need it (they most li
 
 `memotable` is a minimal data-structure library that maintains internal indexes and derived views, propagates updates efficiently, and supports fine-grained subscriptions.
 
-It’s designed for scenarios where you want in-memory tables and derived views that **react to change** without rebuilding or diffing everything.
+It’s designed for scenarios where you want large in-memory tables and derived views that **react to change** without rebuilding or diffing everything.
 
 ---
 
@@ -33,135 +33,46 @@ Everything stays local, predictable, and memory-efficient.
 
 ## Example
 
+See the complete [React Todo App example](./examples/react/TodoApp.tsx) for a full implementation demonstrating:
+
+- **Multi-dimensional indexing**: Items automatically distributed across "List 1", "List 2", and "Important" views
+- **Path-aware sorting**: Different sort orders per partition (created date for lists, due date for important items)
+- **Reactive updates**: Real-time UI updates via the [`useTable` hook](./examples/react/useTable.ts)
+- **Dynamic filtering**: Keyword search across all partitions
+- **Partition-based views**: Each list renders independently while sharing the same data source
+
+**Quick preview:**
+
 ```ts
-import { Table } from "memotable";
-
-// Create a base table
-const tasks = new Table<Task>();
-
-// Add tasks
-tasks.add({ id: "1", listId: "inbox", title: "Buy milk" });
-tasks.add({ id: "2", listId: "work", title: "Send report" });
-
-// Create an index by listId
-const byList = tasks.index("listId");
-
-// Access a sub-table (partition)
-const inbox = byList.partition("inbox");
-
-// Subscribe to changes in that partition
-inbox.subscribe(() => {
-    console.log("Inbox changed");
+// Partition items across multiple views
+todoTable.registerIndex("View", (todo) => {
+    const partitions = [];
+    if (todo.isImportant) partitions.push("Important");
+    partitions.push(todo.listId); // "List 1" or "List 2"
+    return partitions;
 });
 
-// Modify an item
-tasks.update("1", { title: "Buy oat milk" });
+// Different sorting per partition
+todoTable.applyComparator((a, b, path) => {
+    if (path.at(-1) === "Important") {
+        return a.dueDate.getTime() - b.dueDate.getTime(); // Sort by due date
+    }
+    return a.createdDate.getTime() - b.createdDate.getTime(); // Sort by created date
+});
 
-// Pull incremental deltas
-const changed = tasks.nextDelta();
-console.log(changed); // ['1']
-```
-
----
-
-## Install
-
-```bash
-pnpm add memotable
-```
-
-or
-
-```bash
-npm install memotable
-```
-
----
-
-## Why it exists
-
-Most state libraries handle _what changed_, not _where it changed_.  
-`memotable` flips that: it models _structure_ as first-class, so derived collections update themselves with minimal work.
-
-If you think of reactivity like dependency graphs — this is that, but for data tables.
-
----
-
-## Size
-
-| Build    | Brotli      | Description                |
-| -------- | ----------- | -------------------------- |
-| ESM      | **1.54 KB** | Full reactive table engine |
-| Minified | ~1.7 KB     | Production-ready           |
-| Source   | ~3 KB       | TypeScript                 |
-
-Zero dependencies.
-
----
-
-## API surface (core)
-
-| Interface            | Purpose                                   |
-| -------------------- | ----------------------------------------- |
-| `ITable<T>`          | Mutable data table                        |
-| `IReadOnlyTable<T>`  | Non-mutating read interface               |
-| `IIndex<T>`          | Manages partitions by key                 |
-| `IDeltaTrackedTable` | Exposes `nextDelta()` for change tracking |
-
----
-
-## Naming conventions
-
-- `_` prefix indicates internal fields that can be safely mangled in builds.
-- Private methods (`#`) are internal, not part of the public surface.
-- Recursive structures always return `IReadOnlyTable<T>` to prevent accidental mutation from sub-views.
-
----
-
-## Design philosophy
-
-Small surface, high leverage.  
-No magic. No runtime overhead.  
-Everything is explicit, local, and composable.
-
----
-
-## React Integration
-
-`memotable` works seamlessly with React via `useSyncExternalStore`. See the [React examples](./examples/react/) for complete implementations.
-
-### Quick Start
-
-```tsx
-import { useSyncExternalStore } from "react";
-import { Table } from "memotable";
-
-// Create a custom hook
-function useTable<T>(table: IReadOnlyTable<T>): T[] {
-    return useSyncExternalStore(
-        (callback) => table.onChange(callback),
-        () => table.getAll(),
-        () => table.getAll()
-    );
-}
-
-// Use in your component
-function TodoList() {
-    const todos = useTable(todoTable);
-
-    return (
-        <ul>
-            {todos.map((todo) => (
-                <li key={todo.id}>{todo.text}</li>
-            ))}
-        </ul>
-    );
+// React component subscribes to changes
+function ListView({ table }) {
+    const items = useTable(table); // Auto re-renders on changes
+    return <ul>{items.map(item => <li>{item.title}</li>)}</ul>;
 }
 ```
 
-For complete working examples including a Todo app, see [`examples/react/`](./examples/react/).
+**Run the demo:**
 
----
+```bash
+cd examples/react
+# Open index.html in your browser
+```
 
 ## License
 

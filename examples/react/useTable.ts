@@ -24,15 +24,15 @@ import type { IReadOnlyTable } from "../../src/contracts/IReadOnlyTable";
  * ```
  */
 export function useTable<T>(table: IReadOnlyTable<T>): T[] {
-    const [snapshot, setSnapshot] = useState(table.items());
+    const [items, setItems] = useState(table.items());
 
     useEffect(
         () =>
             table.subscribe(() => {
-                setSnapshot(table.items());
+                setItems(table.items());
             }),
         [table.subscribe]
     );
 
-    return snapshot;
+    return items;
 }
