@@ -6,8 +6,9 @@ on:
       - main
 
 permissions:
-  contents: write
-  id-token: write
+    contents: write
+    pull-requests: write
+    id-token: write
 
 jobs:
   release:
@@ -18,16 +19,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: 'pnpm'
-
-      - name: Enable pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@latest --activate
+            node-version: 22
+            cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
