@@ -23,18 +23,33 @@
         "lint": "eslint .",
         "format": "prettier --write .",
         "typecheck": "tsc --noEmit",
-        "release": "pnpm test && pnpm build && npm version patch && git push --follow-tags",
+        "prepublishOnly": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+        "release": "pnpm changeset version && pnpm install && git add . && git commit -m 'chore: version bump' && git push",
+        "publish:ci": "pnpm changeset publish",
         "prepare": "husky install",
         "size": "size-limit",
         "size:mangle": "npx esbuild src/index.ts --bundle --minify --mangle-props='^_' --outfile=dist/mangled.js && brotli -c dist/mangled.js | wc -c"
     },
     "keywords": [
         "typescript",
-        "library"
+        "library",
+        "reactive",
+        "memoized",
+        "table",
+        "data-structures"
     ],
     "author": "",
     "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/shudv/memotable.git"
+    },
+    "bugs": {
+        "url": "https://github.com/shudv/memotable/issues"
+    },
+    "homepage": "https://github.com/shudv/memotable#readme",
     "devDependencies": {
+        "@changesets/cli": "^2.27.9",
         "@eslint/js": "^9.38.0",
         "@size-limit/preset-small-lib": "^11.2.0",
         "@typescript-eslint/eslint-plugin": "^8.46.2",

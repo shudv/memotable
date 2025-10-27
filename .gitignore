@@ -5,6 +5,11 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Changesets
+.changeset/*.md
+!.changeset/README.md
+!.changeset/config.json
+
 # Testing
 coverage/
 
