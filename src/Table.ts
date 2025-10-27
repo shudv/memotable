@@ -2,6 +2,7 @@ import { ITable } from './contracts/ITable';
 import { IFilter, IComparator } from './contracts/IViewTable';
 import { IIndex, IIndexDefinition } from './contracts/IIndexedTable';
 import { IDelta } from './contracts/IDeltaTrackedTable';
+import { ITableConfig } from './contracts/ITableConfig';
 
 /**
  * A delimiter to separate path tokens in the internal table path naming scheme.
@@ -24,17 +25,21 @@ const TablePathDelimiter = '////';
  * Table implementation that supports basic CRUD, batching, indexing, views and change tracking
  */
 export class Table<T> implements ITable<T> {
+    // Table configuration with defaults
+    private readonly _config: ITableConfig<T> = {
+        name: '', // Default empty name
+        isEqual: () => false, // Default equality check always returns false
+        deltaTracking: true, // Delta tracking enabled by default
+        shouldMaterialize: (_, __, isTerminal) => isTerminal, // Materialize only terminal partitions
+    };
+
     /**
      * Create a new Table
-     * @param name The name of the table (defaults to empty string)
-     * @param isEqual Function to compare two items for equality. Defaults to always false.
-     * @param deltaTrackingEnabled Whether delta tracking is enabled for this table. Defaults to true.
+     * @param configOverrides Partial table configuration to override defaults
      */
-    public constructor(
-        private readonly _name: string = '',
-        private readonly _isEqual: (item1: T, item2: T) => boolean = (_, __) => false,
-        private readonly _deltaTrackingEnabled: boolean = true
-    ) {}
+    public constructor(configOverrides: Partial<ITableConfig<T>> = {}) {
+        this._config = { ...this._config, ...configOverrides };
+    }
 
     // #region BASIC OPERATIONS
 
@@ -214,7 +219,7 @@ export class Table<T> implements ITable<T> {
              */
             return {
                 keys: () => [],
-                partition: () => new Table(name),
+                partition: () => new Table({ name }),
             };
         }
 
@@ -228,7 +233,7 @@ export class Table<T> implements ITable<T> {
 
         if (!this._indexes[name]) {
             this._indexes[name] = new RuntimeIndex(
-                `${this._name}${TablePathDelimiter}${name}`,
+                `${this._config.name}${TablePathDelimiter}${name}`,
                 definition,
                 () => this._filter,
                 () => this._comparator
@@ -285,7 +290,7 @@ export class Table<T> implements ITable<T> {
 
     // #region PRIVATE HELPERS
 
-    // Flag an item as modified, which will be included in the next modified batch
+    // Flag an item as modified, which will be included in the next delta
     private _flag(id: string): void {
         this._modifiedIds.add(id);
     }
@@ -332,7 +337,7 @@ export class Table<T> implements ITable<T> {
         const currentValue = this.get(id);
         if (
             (currentValue === null && value === null) ||
-            (currentValue !== null && value !== null && this._isEqual(currentValue, value))
+            (currentValue !== null && value !== null && this._config.isEqual(currentValue, value))
         ) {
             return false;
         }
@@ -348,7 +353,7 @@ export class Table<T> implements ITable<T> {
         this.refresh(id);
 
         // Step 4: Flag the item as modified
-        if (shouldFlag && this._deltaTrackingEnabled) {
+        if (shouldFlag && this._config.deltaTracking) {
             this._flag(id);
         }
 
@@ -532,7 +537,11 @@ export class Table<T> implements ITable<T> {
          * 2. Either a filter or a comparator is applied.
          * 3. The table does not have sub-partitions (i.e., it is a terminal partition).
          */
-        if (!this._view && (this._filter || this._comparator) && !this._hasPartitions()) {
+        if (
+            !this._view &&
+            (this._filter || this._comparator) &&
+            this._config.shouldMaterialize(this, this._getTablePathTokens(), !this._hasPartitions())
+        ) {
             this._view = this.itemIds();
         }
 
@@ -541,7 +550,15 @@ export class Table<T> implements ITable<T> {
          * 1. The view is materialized (i.e., _view is not null).
          * 2. No filter and comparator is defined OR the table has sub-partitions.
          */
-        if (this._view && ((!this._comparator && !this._filter) || this._hasPartitions())) {
+        if (
+            this._view &&
+            ((!this._comparator && !this._filter) ||
+                !this._config.shouldMaterialize(
+                    this,
+                    this._getTablePathTokens(),
+                    !this._hasPartitions()
+                ))
+        ) {
             this._view = null;
         }
     }
@@ -560,7 +577,7 @@ export class Table<T> implements ITable<T> {
 
     // Helper to get path tokens for this table
     private _getTablePathTokens(): string[] {
-        return this._name.split(TablePathDelimiter);
+        return this._config.name.split(TablePathDelimiter);
     }
 
     // Helper to get all item ids in the table (bypassing any applied filter)
@@ -648,22 +665,15 @@ class RuntimeIndex<T> implements IRuntimeIndex<T> {
 
         // Lazily initialize the partition if it does not exist
         if (!this.partitions[key]) {
-            this.partitions[key] = new Table(
-                `${this.name}${TablePathDelimiter}${key}`,
-                /*
-                 * It's important to disable equality checks for sub-partitions because the item would
-                 * already be updated in the parent table. And because we do not clone the item across
-                 * partitions the equality check will always fail. Disabling the equality check allows
-                 * the updates to recursively propagate to all sub-partitions.
-                 */
-                (_, __) => false,
+            this.partitions[key] = new Table({
+                name: `${this.name}${TablePathDelimiter}${key}`,
                 /*
                  * Change tracking is not needed for sub-partitions because these cannot be edited directly
                  * via the public API. The edits made via the parent table are already tracked at the root
                  * table and hence tracking at any layer below the root is unnecessary.
                  */
-                false
-            );
+                deltaTracking: false,
+            });
 
             // Propagate the parent filter and comparator to the partition
             this.partitions[key].applyFilter(this.getParentFilter());

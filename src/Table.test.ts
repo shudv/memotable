@@ -29,7 +29,7 @@ describe('Table - Unit Tests', () => {
         });
 
         test('set and get - custom equality', () => {
-            table = new Table<ITask>('tasks', (task1, task2) => task1.title === task2.title);
+            table = new Table<ITask>({ isEqual: (task1, task2) => task1.title === task2.title });
             const task = { title: 'Task One' };
             expect(table.set('1', task)).toBe(true);
             expect(table.set('1', task)).toBe(false); // No-op
@@ -55,7 +55,7 @@ describe('Table - Unit Tests', () => {
         });
 
         test('runBatch', () => {
-            table = new Table<ITask>('tasks', (task1, task2) => task1.title === task2.title);
+            table = new Table<ITask>({ isEqual: (task1, task2) => task1.title === task2.title });
 
             let changed = table.runBatch((t) => {
                 t.set('1', { title: 'Task One*' });
@@ -121,7 +121,7 @@ describe('Table - Unit Tests', () => {
         });
 
         test('empty table - should be no-op', () => {
-            const table = new Table<ITask>('task');
+            const table = new Table<ITask>();
 
             expect(table.items().length).toBe(0);
 
@@ -282,7 +282,7 @@ describe('Table - Unit Tests', () => {
         });
 
         test('applyFilter > registerIndex > removeFilter', () => {
-            table = new Table<ITask>('tasks');
+            table = new Table<ITask>();
 
             table.set('1', { title: 'Task One', priority: 1 });
             table.set('2', { title: 'Task Two', priority: 0 });
@@ -343,7 +343,7 @@ describe('Table - Unit Tests', () => {
 
     describe('Indexing', () => {
         beforeEach(() => {
-            table = new Table<ITask>('tasks');
+            table = new Table<ITask>();
             table.registerIndex('title', (item) => item.title);
             table.registerIndex('plan', (item) => item.planId ?? 'default');
             table.registerIndex('priority', (item) =>
@@ -696,7 +696,7 @@ describe('Table - Unit Tests', () => {
 
     describe('Tracking', () => {
         beforeEach(() => {
-            table = new Table<ITask>('tasks');
+            table = new Table<ITask>();
             table.registerIndex('title', (task) => task.title);
         });
 
@@ -765,7 +765,7 @@ describe('Table - Unit Tests', () => {
         });
 
         test('tracking disabled', () => {
-            table = new Table<ITask>('tasks', undefined, false); // Disable tracking
+            table = new Table<ITask>({ deltaTracking: false }); // Disable tracking
             table.set('1', { title: 'Task One' });
             table.set('2', { title: 'Task Two' });
 
@@ -775,7 +775,7 @@ describe('Table - Unit Tests', () => {
 
     describe('Subscriptions', () => {
         test('should notify subscribers on item changes', () => {
-            table = new Table<ITask>('tasks');
+            table = new Table<ITask>();
 
             const callback = vi.fn();
             table.subscribe(callback);
@@ -788,7 +788,7 @@ describe('Table - Unit Tests', () => {
         });
 
         test('nested subscriptions', () => {
-            table = new Table<ITask>('tasks');
+            table = new Table<ITask>();
             table.registerIndex('plan', (task) => task.planId ?? 'default');
 
             table.set('1', { title: 'Task One', planId: 'p1' });
@@ -811,7 +811,7 @@ describe('Table - Unit Tests', () => {
         });
 
         test('batch updates notify subscribers once', () => {
-            table = new Table<ITask>('tasks');
+            table = new Table<ITask>();
 
             const callback = vi.fn();
             table.subscribe(callback);
@@ -826,7 +826,7 @@ describe('Table - Unit Tests', () => {
         });
 
         test('unsubscribing from notifications', () => {
-            table = new Table<ITask>('tasks');
+            table = new Table<ITask>();
 
             const callback = vi.fn();
             const unsubscribe = table.subscribe(callback);
@@ -870,8 +870,8 @@ describe('Table - Unit Tests', () => {
         const titleSort = (a: ITask, b: ITask) => a.title.localeCompare(b.title);
         const filter = (task: ITask) => task.priority !== undefined && task.priority > 2;
         const planIndex = (task: ITask) => task.planId ?? 'default';
-        const perfTable = new Table<ITask>('tasks');
-        const emptyPerfTable = new Table<ITask>('tasks');
+        const perfTable = new Table<ITask>();
+        const emptyPerfTable = new Table<ITask>();
 
         perfTable.registerIndex('plan', planIndex);
         emptyPerfTable.registerIndex('plan', planIndex);
@@ -906,7 +906,7 @@ describe('Table - Unit Tests', () => {
         });
 
         test(`${N_SET_NO_INDEX}*set()[no-view-index]`, () => {
-            const table = new Table<ITask>('tasks');
+            const table = new Table<ITask>();
             for (let i = 0; i < N_SET_NO_INDEX; i++) {
                 const taskId = `task-${Math.floor(Math.random() * N_TASK)}`;
                 const task = perfTable.get(taskId);
