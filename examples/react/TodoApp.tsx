@@ -2,6 +2,7 @@ import React from "react";
 import { Table } from "../../src/Table";
 import { useTable } from "./useTable";
 import { IReadOnlyTable } from "../../src/contracts/IReadOnlyTable";
+import { styles } from "./styles";
 
 interface Todo {
     id: string;
@@ -42,40 +43,21 @@ function ListView({ title, table }: { title: string; table: IReadOnlyTable<Todo>
     const items = useTable(table);
 
     return (
-        <div
-            style={{
-                border: "1px solid #ccc",
-                borderRadius: "8px",
-                padding: "16px",
-                backgroundColor: "#f9f9f9",
-                minWidth: "300px",
-            }}
-        >
-            <h3 style={{ marginTop: 0, color: "#333" }}>{title}</h3>
-            <ul style={{ listStyle: "none", padding: 0 }}>
+        <div style={styles.listView}>
+            <h3 style={styles.listViewTitle}>{title}</h3>
+            <ul style={styles.listViewList}>
                 {items.map((todo) => (
-                    <li
-                        key={todo.id}
-                        style={{
-                            padding: "8px",
-                            marginBottom: "8px",
-                            backgroundColor: "white",
-                            borderRadius: "4px",
-                            border: "1px solid #ddd",
-                        }}
-                    >
-                        <div style={{ fontWeight: "bold" }}>{todo.title}</div>
-                        <div style={{ fontSize: "12px", color: "#666" }}>
+                    <li key={todo.id} style={styles.listViewItem}>
+                        <div style={styles.listViewItemTitle}>{todo.title}</div>
+                        <div style={styles.listViewItemMeta}>
                             Created: {todo.createdDate.toLocaleDateString()} | Due:{" "}
                             {todo.dueDate.toLocaleDateString()}
-                            {todo.isImportant && (
-                                <span style={{ color: "red", marginLeft: "8px" }}>⭐</span>
-                            )}
+                            {todo.isImportant && <span style={styles.importantBadge}>⭐</span>}
                         </div>
                     </li>
                 ))}
             </ul>
-            <div style={{ fontSize: "12px", color: "#999" }}>Total: {items.length} items</div>
+            <div style={styles.listViewCount}>Total: {items.length} items</div>
         </div>
     );
 }
@@ -121,58 +103,44 @@ export function TodoApp() {
         }
     };
 
-    // Get all partition keys
     const partitions = ["List 1", "List 2", "Important"];
 
     return (
-        <div style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
+        <div style={styles.container}>
             <h1>Todo List Demo</h1>
 
-            <div style={{ marginBottom: "20px" }}>
+            <div style={styles.filterContainer}>
                 <input
                     type="text"
                     placeholder="Filter by keyword..."
                     value={keyword}
                     onChange={handleKeywordChange}
-                    style={{
-                        padding: "8px 12px",
-                        fontSize: "14px",
-                        border: "1px solid #ccc",
-                        borderRadius: "4px",
-                        width: "300px",
-                        marginBottom: "12px",
-                    }}
+                    style={styles.filterInput}
                 />
             </div>
 
-            <div style={{ marginBottom: "20px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                <button onClick={() => addTodo("List 1", false)} style={buttonStyle}>
+            <div style={styles.buttonContainer}>
+                <button onClick={() => addTodo("List 1", false)} style={styles.button}>
                     Add to List 1
                 </button>
-                <button onClick={() => addTodo("List 2", false)} style={buttonStyle}>
+                <button onClick={() => addTodo("List 2", false)} style={styles.button}>
                     Add to List 2
                 </button>
-                <button onClick={() => addTodo("List 1", true)} style={buttonStyle}>
+                <button onClick={() => addTodo("List 1", true)} style={styles.button}>
                     Add Important to List 1
                 </button>
-                <button onClick={() => addTodo("List 2", true)} style={buttonStyle}>
+                <button onClick={() => addTodo("List 2", true)} style={styles.button}>
                     Add Important to List 2
                 </button>
-                <button onClick={removeTodo} style={{ ...buttonStyle, backgroundColor: "#dc3545" }}>
+                <button onClick={removeTodo} style={styles.buttonDanger}>
                     Remove Last
                 </button>
-                <button onClick={clearAll} style={{ ...buttonStyle, backgroundColor: "#6c757d" }}>
+                <button onClick={clearAll} style={styles.buttonSecondary}>
                     Clear All
                 </button>
             </div>
 
-            <div
-                style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-                    gap: "16px",
-                }}
-            >
+            <div style={styles.gridContainer}>
                 {partitions.map((partitionKey) => (
                     <ListView
                         key={partitionKey}
@@ -184,13 +152,3 @@ export function TodoApp() {
         </div>
     );
 }
-
-const buttonStyle: React.CSSProperties = {
-    padding: "8px 16px",
-    backgroundColor: "#007bff",
-    color: "white",
-    border: "none",
-    borderRadius: "4px",
-    cursor: "pointer",
-    fontSize: "14px",
-};
