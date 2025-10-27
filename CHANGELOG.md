@@ -1,5 +1,11 @@
 # memotable
 
+## 1.0.2
+
+### Patch Changes
+
+- 8d4669b: Mark package as side-effect free
+
 ## 1.0.1
 
 ### Patch Changes
