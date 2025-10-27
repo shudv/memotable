@@ -1,6 +1,7 @@
 import { ITable } from './contracts/ITable';
 import { IFilter, IComparator } from './contracts/IViewTable';
 import { IIndex, IIndexDefinition } from './contracts/IIndexedTable';
+import { IDelta } from './contracts/IDeltaTrackedTable';
 
 /**
  * A delimiter to separate path tokens in the internal table path naming scheme.
@@ -25,15 +26,14 @@ const TablePathDelimiter = '////';
 export class Table<T> implements ITable<T> {
     /**
      * Create a new Table
-     * @param name The name of the table
-     * @param isEqual Function to compare two items for equality. Defaults to strict equality (===).
-     * @param trackingEnabled Whether change tracking is enabled for this table. Defaults to true.
+     * @param name The name of the table (defaults to empty string)
+     * @param isEqual Function to compare two items for equality. Defaults to always false.
+     * @param deltaTrackingEnabled Whether delta tracking is enabled for this table. Defaults to true.
      */
     public constructor(
-        private readonly _name: string,
-        private readonly _isEqual: (item1: T, item2: T) => boolean = (item1, item2) =>
-            item1 === item2,
-        private readonly _trackingEnabled: boolean = true
+        private readonly _name: string = '',
+        private readonly _isEqual: (item1: T, item2: T) => boolean = (_, __) => false,
+        private readonly _deltaTrackingEnabled: boolean = true
     ) {}
 
     // #region BASIC OPERATIONS
@@ -82,23 +82,35 @@ export class Table<T> implements ITable<T> {
     }
 
     public refresh(id: string) {
-        this._updateIndexAndView([id]);
+        this._propagateChanges([id]);
     }
 
     public runBatch(batch: (t: ITable<T>) => void): boolean {
-        // Step 1: Run the batch of operations and mark start and end to disable index/view updates
+        // Step 1: Run the batch of operations and mark start and end to disable change propagation on every set/delete
         this._isBatchOperationInProgress = true;
         batch(this);
         this._isBatchOperationInProgress = false;
 
-        // Step 2: Update the index and view corresponding to the updated ids
+        // Step 2: After the batch is complete, propagate all accumulated changes
         if (this._idsUpdatedInCurrentBatch.size > 0) {
-            this._updateIndexAndView(Array.from(this._idsUpdatedInCurrentBatch));
+            this._propagateChanges(Array.from(this._idsUpdatedInCurrentBatch));
             this._idsUpdatedInCurrentBatch.clear();
             return true;
         }
 
         return false;
+    }
+
+    // #endregion
+
+    // #region SUBSCRIPTIONS
+
+    // Set of listeners subscribed to changes in the table
+    private _listeners: Set<(delta: IDelta) => void> = new Set();
+
+    public subscribe(listener: (delta: IDelta) => void): () => void {
+        this._listeners.add(listener);
+        return () => this._listeners.delete(listener);
     }
 
     // #endregion
@@ -279,10 +291,10 @@ export class Table<T> implements ITable<T> {
     }
 
     /**
-     * Update the indexes and view based on the updated ids.
+     * Propagate changes to indexes, views and notify subscribers.
      * @param updatedIds Array of item IDs that have been updated
      */
-    private _updateIndexAndView(updatedIds: string[]) {
+    private _propagateChanges(updatedIds: string[]) {
         if (this._isBatchOperationInProgress) {
             // If a batch operation is in progress, we record the updated id for later processing
             for (const id of updatedIds) {
@@ -297,6 +309,11 @@ export class Table<T> implements ITable<T> {
             // Step 2: Update view if it has materialized
             if (this._view) {
                 this._applyViewUpdate(this._view, updatedIds);
+            }
+
+            // Step 3: Notify subscribers about the changes
+            for (const listener of this._listeners) {
+                listener(updatedIds);
             }
         }
     }
@@ -331,7 +348,7 @@ export class Table<T> implements ITable<T> {
         this.refresh(id);
 
         // Step 4: Flag the item as modified
-        if (shouldFlag && this._trackingEnabled) {
+        if (shouldFlag && this._deltaTrackingEnabled) {
             this._flag(id);
         }
 

@@ -14,7 +14,7 @@ describe('Table - Unit Tests', () => {
     let table: Table<ITask>;
 
     beforeEach(() => {
-        table = new Table<ITask>('tasks');
+        table = new Table<ITask>();
     });
 
     describe('Basic operations', () => {
@@ -770,6 +770,74 @@ describe('Table - Unit Tests', () => {
             table.set('2', { title: 'Task Two' });
 
             expect(table.nextDelta().length).toBe(0);
+        });
+    });
+
+    describe('Subscriptions', () => {
+        test('should notify subscribers on item changes', () => {
+            table = new Table<ITask>('tasks');
+
+            const callback = vi.fn();
+            table.subscribe(callback);
+
+            table.set('1', { title: 'Task One' });
+            expect(callback).toHaveBeenCalledWith(['1']);
+
+            table.set('2', { title: 'Task Two' });
+            expect(callback).toHaveBeenCalledWith(['2']);
+        });
+
+        test('nested subscriptions', () => {
+            table = new Table<ITask>('tasks');
+            table.registerIndex('plan', (task) => task.planId ?? 'default');
+
+            table.set('1', { title: 'Task One', planId: 'p1' });
+            table.set('2', { title: 'Task Two', planId: 'p2' });
+
+            const p1Callback = vi.fn();
+            const p2Callback = vi.fn();
+
+            table.index('plan').partition('p1').subscribe(p1Callback);
+            table.index('plan').partition('p2').subscribe(p2Callback);
+
+            // Update task in p1
+            table.set('1', { title: 'Updated Task One', planId: 'p1' });
+            expect(p1Callback).toHaveBeenCalledWith(['1']);
+            expect(p2Callback).not.toHaveBeenCalled();
+
+            // Update task in p2
+            table.set('2', { title: 'Updated Task Two', planId: 'p2' });
+            expect(p2Callback).toHaveBeenCalledWith(['2']);
+        });
+
+        test('batch updates notify subscribers once', () => {
+            table = new Table<ITask>('tasks');
+
+            const callback = vi.fn();
+            table.subscribe(callback);
+
+            table.runBatch((t) => {
+                t.set('1', { title: 'Task One' });
+                t.set('2', { title: 'Task Two' });
+                t.set('3', { title: 'Task Three' });
+            });
+
+            expect(callback).toHaveBeenCalledTimes(1);
+        });
+
+        test('unsubscribing from notifications', () => {
+            table = new Table<ITask>('tasks');
+
+            const callback = vi.fn();
+            const unsubscribe = table.subscribe(callback);
+
+            table.set('1', { title: 'Task One' });
+            expect(callback).toHaveBeenCalledWith(['1']);
+
+            unsubscribe();
+
+            table.set('2', { title: 'Task Two' });
+            expect(callback).toHaveBeenCalledTimes(1); // No new calls after unsubscribe
         });
     });
 
