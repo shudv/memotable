@@ -1,64 +1,99 @@
 {
-  "name": "memotable",
-  "version": "0.0.0",
-  "description": "Reactive, memoized in-memory tables for structured data — derived, sorted, and filtered views that update incrementally.",
-  "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
-    }
-  },
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "dev": "tsup src/index.ts --watch",
-    "build": "tsup src/index.ts --dts --format esm,cjs",
-    "test": "vitest run --coverage",
-    "test:watch": "vitest",
-    "lint": "eslint .",
-    "format": "prettier --write .",
-    "typecheck": "tsc --noEmit",
-    "release": "pnpm test && pnpm build && npm version patch && git push --follow-tags",
-    "prepare": "husky install"
-  },
-  "keywords": [
-    "typescript",
-    "library"
-  ],
-  "author": "",
-  "license": "MIT",
-  "devDependencies": {
-    "@eslint/js": "^9.38.0",
-    "@typescript-eslint/eslint-plugin": "^8.46.2",
-    "@typescript-eslint/parser": "^8.46.2",
-    "@vitest/coverage-v8": "4.0.3",
-    "eslint": "^9.38.0",
-    "eslint-config-prettier": "^10.1.8",
-    "husky": "^9.1.7",
-    "lint-staged": "^16.2.6",
-    "prettier": "^3.6.2",
-    "tsup": "^8.5.0",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.46.2",
-    "vitest": "^4.0.3"
-  },
-  "lint-staged": {
-    "*.{ts,tsx}": [
-      "eslint --fix",
-      "prettier --write"
+    "name": "memotable",
+    "version": "0.0.0",
+    "description": "Reactive, memoized in-memory tables for structured data — derived, sorted, and filtered views that update incrementally.",
+    "type": "module",
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "require": "./dist/index.cjs"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
     ],
-    "*.{json,md}": [
-      "prettier --write"
-    ]
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "packageManager": "pnpm@8.15.0"
+    "scripts": {
+        "dev": "tsup src/index.ts --watch",
+        "demo": "vite examples/react",
+        "build": "tsup src/index.ts --dts --format esm,cjs",
+        "test": "vitest run --coverage",
+        "test:watch": "vitest",
+        "lint": "eslint .",
+        "format": "prettier --write .",
+        "typecheck": "tsc --noEmit",
+        "prepublishOnly": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+        "release": "pnpm changeset version && pnpm install && git add . && git commit -m 'chore: version bump' && git push",
+        "publish:ci": "pnpm changeset publish",
+        "prepare": "husky install",
+        "size": "size-limit",
+        "size:mangle": "npx esbuild src/index.ts --bundle --minify --mangle-props='^_' --outfile=dist/mangled.js && brotli -c dist/mangled.js | wc -c"
+    },
+    "keywords": [
+        "typescript",
+        "library",
+        "reactive",
+        "memoized",
+        "table",
+        "data-structures"
+    ],
+    "author": "",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/shudv/memotable.git"
+    },
+    "bugs": {
+        "url": "https://github.com/shudv/memotable/issues"
+    },
+    "homepage": "https://github.com/shudv/memotable#readme",
+    "devDependencies": {
+        "@changesets/cli": "^2.27.9",
+        "@eslint/js": "^9.38.0",
+        "@size-limit/preset-small-lib": "^11.2.0",
+        "@types/react": "^18.3.12",
+        "@types/react-dom": "^18.3.1",
+        "@typescript-eslint/eslint-plugin": "^8.46.2",
+        "@typescript-eslint/parser": "^8.46.2",
+        "@vitejs/plugin-react": "^4.3.3",
+        "@vitest/coverage-v8": "4.0.3",
+        "esbuild": "^0.25.11",
+        "eslint": "^9.38.0",
+        "eslint-config-prettier": "^10.1.8",
+        "husky": "^9.1.7",
+        "lint-staged": "^16.2.6",
+        "prettier": "^3.6.2",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "size-limit": "^11.2.0",
+        "tsup": "^8.5.0",
+        "typescript": "^5.9.3",
+        "typescript-eslint": "^8.46.2",
+        "vite": "^5.4.11",
+        "vitest": "^4.0.3"
+    },
+    "lint-staged": {
+        "*.{ts,tsx}": [
+            "eslint --fix",
+            "prettier --write"
+        ],
+        "*.{json,md}": [
+            "prettier --write"
+        ]
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "size-limit": [
+        {
+            "path": "dist/index.js",
+            "import": "{ Table }",
+            "limit": "2 kB"
+        }
+    ],
+    "packageManager": "pnpm@10.19.0"
 }

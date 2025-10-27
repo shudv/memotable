@@ -14,7 +14,7 @@ describe("Table - Unit Tests", () => {
     let table: Table<ITask>;
 
     beforeEach(() => {
-        table = new Table<ITask>("tasks");
+        table = new Table<ITask>();
     });
 
     describe("Basic operations", () => {
@@ -29,7 +29,7 @@ describe("Table - Unit Tests", () => {
         });
 
         test("set and get - custom equality", () => {
-            table = new Table<ITask>("tasks", (task1, task2) => task1.title === task2.title);
+            table = new Table<ITask>({ isEqual: (task1, task2) => task1.title === task2.title });
             const task = { title: "Task One" };
             expect(table.set("1", task)).toBe(true);
             expect(table.set("1", task)).toBe(false); // No-op
@@ -54,24 +54,10 @@ describe("Table - Unit Tests", () => {
             expect(table.get("1")).toBeNull();
         });
 
-        test("should correctly re-key an item", () => {
-            table.set("1", { title: "Task One" });
-            let changed = table.reKey("1", "2");
+        test("runBatch", () => {
+            table = new Table<ITask>({ isEqual: (task1, task2) => task1.title === task2.title });
 
-            expect(changed).toBe(true);
-            expect(table.get("2")).toEqual({ title: "Task One" });
-            expect(table.get("1")).toBeNull();
-
-            changed = table.reKey("3", "4");
-            expect(changed).toBe(false); // No-op, item does not exist
-            expect(table.get("4")).toBeNull();
-            expect(table.get("3")).toBeNull();
-        });
-
-        test("executeBatch", () => {
-            table = new Table<ITask>("tasks", (task1, task2) => task1.title === task2.title);
-
-            let changed = table.executeBatch((t) => {
+            let changed = table.runBatch((t) => {
                 t.set("1", { title: "Task One*" });
                 t.set("2", { title: "Task Two*" });
                 t.delete("3");
@@ -85,7 +71,7 @@ describe("Table - Unit Tests", () => {
             expect(table.get("4")!.title).toEqual("Task Four*");
 
             // Duplicate execution should not change the table
-            changed = table.executeBatch((t) => {
+            changed = table.runBatch((t) => {
                 t.set("1", { title: "Task One*" });
                 t.set("2", { title: "Task Two*" });
                 t.delete("3");
@@ -135,7 +121,7 @@ describe("Table - Unit Tests", () => {
         });
 
         test("empty table - should be no-op", () => {
-            const table = new Table<ITask>("task");
+            const table = new Table<ITask>();
 
             expect(table.items().length).toBe(0);
 
@@ -150,22 +136,22 @@ describe("Table - Unit Tests", () => {
             table.applyFilter((item) => (item.priority ?? 0) >= 2);
 
             // View should honour the comparator and filter
-            expectEqualUnordered(table.itemIds(), ["1", "4"]);
+            expect(table.itemIds().sort()).toEqual(["1", "4"].sort());
 
             // Apply a new filter that is more lenient
             table.applyFilter((item) => item.priority !== undefined);
-            expectEqualUnordered(table.itemIds(), ["1", "3", "4"]);
+            expect(table.itemIds().sort()).toEqual(["1", "3", "4"].sort());
 
             // Make table updates
             table.set("4", { title: "M" });
             table.set("5", { title: "New Task", priority: 1 });
 
             // The view should reflect the update
-            expectEqualUnordered(table.itemIds(), ["1", "3", "5"]);
+            expect(table.itemIds().sort()).toEqual(["1", "3", "5"].sort());
 
             // Remove the filter
             table.applyFilter(null);
-            expectEqualUnordered(table.itemIds(), ["1", "2", "3", "4", "5"]);
+            expect(table.itemIds().sort()).toEqual(["1", "2", "3", "4", "5"].sort());
         });
 
         test("Ordering", () => {
@@ -188,7 +174,7 @@ describe("Table - Unit Tests", () => {
 
             // Remove the comparator
             table.applyComparator(null);
-            expectEqualUnordered(table.itemIds(), ["1", "2", "3", "4", "5", "6"]);
+            expect(table.itemIds().sort()).toEqual(["1", "2", "3", "4", "5", "6"].sort());
         });
 
         test("Combined filter and ordering", () => {
@@ -222,7 +208,9 @@ describe("Table - Unit Tests", () => {
                 switch (planId) {
                     case "p1":
                     case "p2":
-                        return index === "A" ? task.title!.endsWith(planId) : !task.title!.endsWith(planId);
+                        return index === "A"
+                            ? task.title!.endsWith(planId)
+                            : !task.title!.endsWith(planId);
                     case "p3":
                         return index === "A" ? task.title!.length === 1 : task.title!.length !== 1;
                     default:
@@ -234,9 +222,13 @@ describe("Table - Unit Tests", () => {
                 const planId = path.at(-1);
                 switch (planId) {
                     case "p1":
-                        return index === "A" ? task1.title!.localeCompare(task2.title!) : task2.title!.localeCompare(task1.title!);
+                        return index === "A"
+                            ? task1.title!.localeCompare(task2.title!)
+                            : task2.title!.localeCompare(task1.title!);
                     case "p2":
-                        return index === "A" ? task2.title!.localeCompare(task1.title!) : task1.title!.localeCompare(task2.title!);
+                        return index === "A"
+                            ? task2.title!.localeCompare(task1.title!)
+                            : task1.title!.localeCompare(task2.title!);
                     case "p3":
                     default:
                         return 0; // No specific sorting for p3
@@ -269,12 +261,12 @@ describe("Table - Unit Tests", () => {
 
             expect(plan1ViewPartitionA.itemIds()).toEqual(["1", "2"]); // Filtered and sorted by title ascending
             expect(plan2ViewPartitionA.itemIds()).toEqual(["6", "4"]); // Filtered and sorted by title descending
-            expectEqualUnordered(plan3ViewPartitionA.itemIds(), ["7", "8", "9", "10", "11"]); // No filter sort applied
+            expect(plan3ViewPartitionA.itemIds().sort()).toEqual(["7", "8", "9", "11"].sort()); // Only filter applied
 
             // Assert Inverse filter and sort applied on A Inverse
             expect(plan1ViewPartitionAInverse.itemIds()).toEqual(["3"]);
             expect(plan2ViewPartitionAInverse.itemIds()).toEqual(["5"]);
-            expectEqualUnordered(plan3ViewPartitionAInverse.itemIds(), []);
+            expect(plan3ViewPartitionAInverse.itemIds()).toEqual(["10"]);
 
             // Apply a filter comparator at table level
             table.applyFilter((task) => task.title!.length === 1);
@@ -290,7 +282,7 @@ describe("Table - Unit Tests", () => {
         });
 
         test("applyFilter > registerIndex > removeFilter", () => {
-            table = new Table<ITask>("tasks");
+            table = new Table<ITask>();
 
             table.set("1", { title: "Task One", priority: 1 });
             table.set("2", { title: "Task Two", priority: 0 });
@@ -319,17 +311,73 @@ describe("Table - Unit Tests", () => {
             expect(index.partition("Task Three").itemIds()).toEqual(["3"]);
             expect(index.partition("Task Four").itemIds()).toEqual(["4"]);
         });
+
+        test("refreshView", () => {
+            const viewConfig = { minPriority: 2, sortByPriorityAsc: true };
+
+            table.applyFilter(
+                (item) => item.priority !== undefined && item.priority >= viewConfig.minPriority
+            );
+            table.applyComparator((a, b) => {
+                if (viewConfig.sortByPriorityAsc) {
+                    return (a.priority ?? 0) - (b.priority ?? 0);
+                }
+                return (b.priority ?? 0) - (a.priority ?? 0);
+            });
+
+            expect(table.itemIds()).toEqual(["4", "1"]);
+
+            // Change view config
+            viewConfig.minPriority = 0;
+            viewConfig.sortByPriorityAsc = false;
+
+            // Because the filter and comparator were updated externally, still no change in view
+            expect(table.itemIds()).toEqual(["4", "1"]);
+
+            // Refresh the view to re-evaluate filter and comparator
+            table.refreshView();
+
+            expect(table.itemIds()).toEqual(["1", "4", "3"]);
+        });
+
+        test("filter removal while comparator is applied", () => {
+            table.applyFilter((item) => (item.priority ?? 0) >= 2);
+            table.applyComparator((a, b) => a.title.localeCompare(b.title));
+
+            // The table should be filtered and ordered
+            expect(table.itemIds()).toEqual(["4", "1"]);
+
+            table.applyFilter(null);
+            expect(table.itemIds().sort()).toEqual(["1", "2", "3", "4"].sort());
+        });
+
+        test("comparator removal while filter is applied", () => {
+            table.applyComparator((a, b) => a.title.localeCompare(b.title));
+            table.applyFilter((item) => (item.priority ?? 0) >= 2);
+
+            // The table should be ordered and filtered
+            expect(table.itemIds()).toEqual(["4", "1"]);
+
+            table.applyComparator(null);
+            expect(table.itemIds().sort()).toEqual(["1", "4"].sort());
+        });
     });
 
     describe("Indexing", () => {
         beforeEach(() => {
-            table = new Table<ITask>("tasks");
+            table = new Table<ITask>();
             table.registerIndex("title", (item) => item.title);
             table.registerIndex("plan", (item) => item.planId ?? "default");
-            table.registerIndex("priority", (item) => (item.priority ? item.priority.toString() : null));
+            table.registerIndex("priority", (item) =>
+                item.priority ? item.priority.toString() : null
+            );
             table.registerIndex("tags", (item) => item.tags ?? null);
-            table.registerIndex("description", (item) => ((item.description ?? "").length > 2 ? "HasDescription" : null));
-            table.registerIndex("isCompleted", (item) => (item.isCompleted ? "completed" : "pending"));
+            table.registerIndex("description", (item) =>
+                (item.description ?? "").length > 2 ? "HasDescription" : null
+            );
+            table.registerIndex("isCompleted", (item) =>
+                item.isCompleted ? "completed" : "pending"
+            );
         });
 
         test("Correctness for basic unsorted unfiltered indexes", () => {
@@ -393,7 +441,7 @@ describe("Table - Unit Tests", () => {
             p1.applyFilter((item) => item.title.startsWith("T"));
 
             const viewIdsOriginalOrder = p1.itemIds();
-            expectEqualUnordered(viewIdsOriginalOrder, ["1", "2", "3"]);
+            expect(viewIdsOriginalOrder.sort()).toEqual(["1", "2", "3"].sort());
 
             // Updates should not change order of unsorted indexes
             table.set("2", { planId: "p1", title: "T2 Updated" });
@@ -404,14 +452,18 @@ describe("Table - Unit Tests", () => {
         test("registerIndex", () => {
             table.set("1", { title: "Task One", priority: 1 });
 
-            expect(table.registerIndex("priority1", (item) => `${item.priority?.toString()}`)).toBe(true);
+            expect(table.registerIndex("priority1", (item) => `${item.priority?.toString()}`)).toBe(
+                true
+            );
             const index = table.index("priority1");
 
             // should create on registration
             expect(index.partition("1").itemIds()).toEqual(["1"]);
 
             // try re-register same index with a different definition
-            expect(table.registerIndex("priority1", (item) => `${item.priority?.toString()}`)).toBe(false);
+            expect(table.registerIndex("priority1", (item) => `${item.priority?.toString()}`)).toBe(
+                false
+            );
             const index2 = table.index("priority1");
 
             // The new definition should be ignored and existing index should remain unchanged
@@ -422,7 +474,9 @@ describe("Table - Unit Tests", () => {
 
         test("registerIndex - readonly keys", () => {
             table.set("1", { title: "Task One", priority: 1 });
-            table.registerIndex("priority1", (item) => Object.freeze([`${item.priority?.toString()}`]));
+            table.registerIndex("priority1", (item) =>
+                Object.freeze([`${item.priority?.toString()}`])
+            );
             const index = table.index("priority1");
 
             // Should create on registration
@@ -430,7 +484,9 @@ describe("Table - Unit Tests", () => {
         });
 
         test("registerIndex with invalid name", () => {
-            expect(() => table.registerIndex("invalid/////name", (item) => `${item.priority?.toString()}`)).toThrow();
+            expect(() =>
+                table.registerIndex("invalid/////name", (item) => `${item.priority?.toString()}`)
+            ).toThrow();
         });
 
         test("registerIndex with invalid partition keys", () => {
@@ -447,7 +503,9 @@ describe("Table - Unit Tests", () => {
             const indexConfig = { priorityCutOff: 1 };
 
             // An index that references an external config to determine partitioning
-            table.registerIndex("custom", (item) => (item.priority && item.priority > indexConfig.priorityCutOff ? "high" : "low"));
+            table.registerIndex("custom", (item) =>
+                item.priority && item.priority > indexConfig.priorityCutOff ? "high" : "low"
+            );
 
             table.set("1", { title: "Task One", priority: 1 });
             table.set("2", { title: "Task Two", priority: 2 });
@@ -494,7 +552,10 @@ describe("Table - Unit Tests", () => {
                 isCompleted: true,
             });
 
-            expect(table.index("title").keys()).toStrictEqual(["Important Task", "Customer request"]);
+            expect(table.index("title").keys()).toStrictEqual([
+                "Important Task",
+                "Customer request",
+            ]);
             expect(table.index("priority").keys()).toStrictEqual(["1", "2"]);
             expect(table.index("tags").keys()).toStrictEqual(["urgent", "feature", "backlog"]);
         });
@@ -515,14 +576,44 @@ describe("Table - Unit Tests", () => {
     describe("Recursive partitioning", () => {
         beforeEach(() => {
             // Add items with different plans, priorities, and completion status
-            table.set("1", { title: "Alice Task", planId: "plan1", priority: 5, isCompleted: false });
+            table.set("1", {
+                title: "Alice Task",
+                planId: "plan1",
+                priority: 5,
+                isCompleted: false,
+            });
             table.set("2", { title: "Bob Work", planId: "plan1", priority: 3, isCompleted: true });
-            table.set("3", { title: "Charlie Item", planId: "plan1", priority: 8, isCompleted: false });
-            table.set("4", { title: "David Task", planId: "plan1", priority: 1, isCompleted: true });
+            table.set("3", {
+                title: "Charlie Item",
+                planId: "plan1",
+                priority: 8,
+                isCompleted: false,
+            });
+            table.set("4", {
+                title: "David Task",
+                planId: "plan1",
+                priority: 1,
+                isCompleted: true,
+            });
             table.set("5", { title: "Eve Work", planId: "plan1", priority: 7, isCompleted: true });
-            table.set("6", { title: "Frank Item", planId: "plan2", priority: 4, isCompleted: true });
-            table.set("7", { title: "Grace Task", planId: "plan2", priority: 6, isCompleted: false });
-            table.set("8", { title: "Henry Work", planId: "plan3", priority: 2, isCompleted: true });
+            table.set("6", {
+                title: "Frank Item",
+                planId: "plan2",
+                priority: 4,
+                isCompleted: true,
+            });
+            table.set("7", {
+                title: "Grace Task",
+                planId: "plan2",
+                priority: 6,
+                isCompleted: false,
+            });
+            table.set("8", {
+                title: "Henry Work",
+                planId: "plan3",
+                priority: 2,
+                isCompleted: true,
+            });
         });
 
         test("should allow defining sub-partitions recursively", () => {
@@ -530,19 +621,23 @@ describe("Table - Unit Tests", () => {
             table.registerIndex("plan", (task) => task.planId ?? "default");
             const planIndex = table.index("plan");
             const plan1Partition = planIndex.partition("plan1");
-            expectEqualUnordered(plan1Partition.itemIds(), ["1", "2", "3", "4", "5"]);
+            expect(plan1Partition.itemIds().sort()).toEqual(["1", "2", "3", "4", "5"]);
 
             // Create a sub-partition for high priority tasks
-            plan1Partition.registerIndex("highPriority", (task) => ((task.priority ?? 0) >= 5 ? "high" : "low"));
+            plan1Partition.registerIndex("highPriority", (task) =>
+                (task.priority ?? 0) >= 5 ? "high" : "low"
+            );
             const highPriorityIndex = plan1Partition.index("highPriority");
             const highPriorityPartition = highPriorityIndex.partition("high");
-            expectEqualUnordered(highPriorityPartition.itemIds(), ["1", "3", "5"]);
+            expect(highPriorityPartition.itemIds().sort()).toEqual(["1", "3", "5"]);
 
             // Create a sub-partition for completed tasks
-            highPriorityPartition.registerIndex("completed", (task) => (task.isCompleted ? "completed" : "pending"));
+            highPriorityPartition.registerIndex("completed", (task) =>
+                task.isCompleted ? "completed" : "pending"
+            );
             const completedIndex = highPriorityPartition.index("completed");
             const completedPartition = completedIndex.partition("completed");
-            expectEqualUnordered(completedPartition.itemIds(), ["5"]);
+            expect(completedPartition.itemIds().sort()).toEqual(["5"]);
         });
 
         test("applying a filter/comparator at a partition should apply recursively to all sub-partitions", () => {
@@ -558,7 +653,9 @@ describe("Table - Unit Tests", () => {
             const plan1BoardPartition = plan1ViewIndex.partition("board");
 
             // Create a status partition on the board view
-            plan1BoardPartition.registerIndex("status", (task) => (task.isCompleted ? "completed" : "pending"));
+            plan1BoardPartition.registerIndex("status", (task) =>
+                task.isCompleted ? "completed" : "pending"
+            );
             const plan1BoardStatusIndex = plan1BoardPartition.index("status");
             const plan1BoardCompletedPartition = plan1BoardStatusIndex.partition("completed");
             const plan1BoardPendingPartition = plan1BoardStatusIndex.partition("pending");
@@ -566,11 +663,11 @@ describe("Table - Unit Tests", () => {
             // Apply a filter at the plan level so that it applies to all views
             plan1Partition.applyFilter((task) => (task.priority ?? 0) >= 4);
 
-            expectEqualUnordered(plan1Partition.itemIds(), ["3", "5", "1"]);
-            expectEqualUnordered(plan1GridPartition.itemIds(), ["3", "5", "1"]);
-            expectEqualUnordered(plan1BoardPartition.itemIds(), ["3", "5", "1"]);
-            expectEqualUnordered(plan1BoardCompletedPartition.itemIds(), ["5"]);
-            expectEqualUnordered(plan1BoardPendingPartition.itemIds(), ["3", "1"]);
+            expect(plan1Partition.itemIds().sort()).toEqual(["1", "3", "5"]);
+            expect(plan1GridPartition.itemIds().sort()).toEqual(["1", "3", "5"]);
+            expect(plan1BoardPartition.itemIds().sort()).toEqual(["1", "3", "5"]);
+            expect(plan1BoardCompletedPartition.itemIds().sort()).toEqual(["5"]);
+            expect(plan1BoardPendingPartition.itemIds().sort()).toEqual(["1", "3"]);
 
             // Apply different comparators for the grid and board view partitions
             plan1GridPartition.applyComparator((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
@@ -593,7 +690,9 @@ describe("Table - Unit Tests", () => {
             plan1Partition.applyComparator((a, b) => a.title.localeCompare(b.title));
 
             // Create a priority class partitioning with one partition that has no items
-            plan1Partition.registerIndex("priority", (task) => ((task.priority ?? 0) > 0 ? "prioritized" : "not-prioritized"));
+            plan1Partition.registerIndex("priority", (task) =>
+                (task.priority ?? 0) > 0 ? "prioritized" : "not-prioritized"
+            );
             const plan1PriorityIndex = plan1Partition.index("priority");
             const prioritizedPlan1Partition = plan1PriorityIndex.partition("prioritized");
             const notPrioritizedPlan1Partition = plan1PriorityIndex.partition("not-prioritized");
@@ -604,7 +703,11 @@ describe("Table - Unit Tests", () => {
 
             // Add some non-prioritized completed tasks to the partition
             table.set("9", { title: "Non-Prioritized Task", planId: "plan1", isCompleted: true });
-            table.set("10", { title: "Another Non-Prioritized Task", planId: "plan1", isCompleted: true });
+            table.set("10", {
+                title: "Another Non-Prioritized Task",
+                planId: "plan1",
+                isCompleted: true,
+            });
             table.set("11", { title: "Yet Another Task", planId: "plan1", isCompleted: true });
 
             expect(plan1Partition.itemIds()).toEqual(["10", "2", "4", "5", "9", "11"]);
@@ -615,7 +718,7 @@ describe("Table - Unit Tests", () => {
 
     describe("Tracking", () => {
         beforeEach(() => {
-            table = new Table<ITask>("tasks");
+            table = new Table<ITask>();
             table.registerIndex("title", (task) => task.title);
         });
 
@@ -623,9 +726,8 @@ describe("Table - Unit Tests", () => {
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
 
-            const batch = table.nextModifiedBatch();
-            expect(batch.deleted.length).toBe(0);
-            expect(batch.upserted.length).toBe(2);
+            const delta = table.nextDelta();
+            expect(delta.length).toBe(2);
         });
 
         test("should limit modified items to specified limit", () => {
@@ -633,9 +735,8 @@ describe("Table - Unit Tests", () => {
                 table.set(i.toString(), { title: `Task ${i}` });
             }
 
-            const batch = table.nextModifiedBatch(50);
-            expect(batch.upserted.length).toBe(50);
-            expect(batch.deleted.length).toBe(0);
+            const delta = table.nextDelta(50);
+            expect(delta.length).toBe(50);
         });
 
         test("should return all items if no limit is specified", () => {
@@ -643,9 +744,8 @@ describe("Table - Unit Tests", () => {
                 table.set(i.toString(), { title: `Task ${i}` });
             }
 
-            const batch = table.nextModifiedBatch();
-            expect(batch.upserted.length).toBe(100);
-            expect(batch.deleted.length).toBe(0);
+            const delta = table.nextDelta();
+            expect(delta.length).toBe(100);
         });
 
         test("should reset the batches once they are returned", () => {
@@ -653,52 +753,201 @@ describe("Table - Unit Tests", () => {
                 table.set(i.toString(), { title: `Task ${i}` });
             }
 
-            const batch = table.nextModifiedBatch();
-            expect(batch.upserted.length).toBe(100);
-            expect(batch.deleted.length).toBe(0);
+            const delta = table.nextDelta();
+            expect(delta.length).toBe(100);
 
-            const batch2 = table.nextModifiedBatch();
-            expect(batch2.upserted.length).toBe(0);
-            expect(batch2.deleted.length).toBe(0);
+            const delta2 = table.nextDelta();
+            expect(delta2.length).toBe(0);
         });
 
         test("should not track non-existent records", () => {
-            table.delete("1");
-            expect(table.nextModifiedBatch().deleted.length).toBe(0);
+            table.delete("1"); // delete non-existent record
+            expect(table.nextDelta().length).toBe(0);
         });
 
         test("should correctly track deletions", () => {
             table.set("1", { title: "Task One" });
-            table.nextModifiedBatch(); // Discard the initial batch
+            table.nextDelta(); // Discard the initial batch
 
             table.delete("1");
-            const batch = table.nextModifiedBatch();
-            expect(batch.deleted).toEqual(["1"]);
+            expect(table.nextDelta()).toEqual(["1"]);
         });
 
         test("should track updates during a batch operation", () => {
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
-            table.nextModifiedBatch(); // Discard the initial batch
+            table.nextDelta(); // Discard the initial batch
 
-            table.executeBatch((t) => {
+            table.runBatch((t) => {
                 t.set("1", { title: "Updated Task One" });
                 t.delete("2");
             });
 
-            const batch = table.nextModifiedBatch();
-            expect(batch.upserted).toEqual(["1"]);
-            expect(batch.deleted).toEqual(["2"]);
+            expect(table.nextDelta().sort()).toEqual(["1", "2"]);
         });
 
         test("tracking disabled", () => {
-            table = new Table<ITask>("tasks", undefined, false); // Disable tracking
+            table = new Table<ITask>({ deltaTracking: false }); // Disable tracking
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
 
-            const batch = table.nextModifiedBatch();
-            expect(batch.upserted.length).toBe(0);
-            expect(batch.deleted.length).toBe(0);
+            expect(table.nextDelta().length).toBe(0);
+        });
+    });
+
+    describe("Subscriptions", () => {
+        test("should notify subscribers on item changes", () => {
+            table = new Table<ITask>();
+
+            const callback = vi.fn();
+            table.subscribe(callback);
+
+            table.set("1", { title: "Task One" });
+            expect(callback).toHaveBeenCalledWith(["1"]);
+
+            table.set("2", { title: "Task Two" });
+            expect(callback).toHaveBeenCalledWith(["2"]);
+        });
+
+        test("nested subscriptions", () => {
+            table = new Table<ITask>();
+            table.registerIndex("plan", (task) => task.planId ?? "default");
+
+            table.set("1", { title: "Task One", planId: "p1" });
+            table.set("2", { title: "Task Two", planId: "p2" });
+
+            const p1Callback = vi.fn();
+            const p2Callback = vi.fn();
+
+            table.index("plan").partition("p1").subscribe(p1Callback);
+            table.index("plan").partition("p2").subscribe(p2Callback);
+
+            // Update task in p1
+            table.set("1", { title: "Updated Task One", planId: "p1" });
+            expect(p1Callback).toHaveBeenCalledWith(["1"]);
+            expect(p2Callback).not.toHaveBeenCalled();
+
+            // Update task in p2
+            table.set("2", { title: "Updated Task Two", planId: "p2" });
+            expect(p2Callback).toHaveBeenCalledWith(["2"]);
+        });
+
+        test("batch updates notify subscribers once", () => {
+            table = new Table<ITask>();
+
+            const callback = vi.fn();
+            table.subscribe(callback);
+
+            table.runBatch((t) => {
+                t.set("1", { title: "Task One" });
+                t.set("2", { title: "Task Two" });
+                t.set("3", { title: "Task Three" });
+            });
+
+            expect(callback).toHaveBeenCalledTimes(1);
+        });
+
+        test("unsubscribing from notifications", () => {
+            table = new Table<ITask>();
+
+            const callback = vi.fn();
+            const unsubscribe = table.subscribe(callback);
+
+            table.set("1", { title: "Task One" });
+            expect(callback).toHaveBeenCalledWith(["1"]);
+
+            unsubscribe();
+
+            table.set("2", { title: "Task Two" });
+            expect(callback).toHaveBeenCalledTimes(1); // No new calls after unsubscribe
+        });
+
+        test("view updates - callbacks should be invoked with empty delta", () => {
+            table = new Table<ITask>();
+
+            table.set("1", { title: "Task One", priority: 1 });
+            table.set("2", { title: "Task Two", priority: 3 });
+            table.set("3", { title: "Task Three", priority: 2 });
+
+            const callback = vi.fn();
+            table.subscribe(callback);
+
+            table.applyFilter((task) => (task.priority ?? 0) >= 2);
+            expect(callback).toHaveBeenCalledTimes(1);
+            expect(callback).toHaveBeenCalledWith([]); // Empty delta for view change
+
+            table.applyComparator((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+            expect(callback).toHaveBeenCalledTimes(2);
+            expect(callback).toHaveBeenCalledWith([]); // Empty delta for view change
+        });
+    });
+
+    // Note that materialization tests are limited to correctness only.
+    describe("View materialization", () => {
+        test("default materialization policy", () => {
+            // Materialize terminal partitions
+            table = new Table<ITask>({ shouldMaterialize: (_, isTerminal) => isTerminal });
+
+            // Register an index so that root isn't terminal
+            table.registerIndex("plan", (task) => task.planId ?? "default");
+
+            table.set("1", { title: "Task One", planId: "p1", priority: 1 });
+            table.set("2", { title: "Task Two", planId: "p1", priority: 3 });
+            table.set("3", { title: "Task Three", planId: "p2", priority: 2 });
+
+            // Apply a filter so that terminal partitions are materialized
+            table.applyFilter((task) => (task.priority ?? 0) >= 2);
+
+            // expect terminal partitions to be materialized
+            // HACK: Given the table does not expose materialization state, we check by reference equality
+            expect(table.index("plan").partition("p1").itemIds()).toBe(
+                table.index("plan").partition("p1").itemIds()
+            );
+            expect(table.index("plan").partition("p2").itemIds()).toBe(
+                table.index("plan").partition("p2").itemIds()
+            );
+
+            // Non-terminal partition should not be materialized
+            expect(table.itemIds()).not.toBe(table.itemIds());
+
+            // Now drop the index, making root terminal
+            table.dropIndex("plan");
+
+            // Root partition should now be materialized
+            expect(table.itemIds()).toBe(table.itemIds());
+        });
+
+        test("custom materialization policy", () => {
+            // Materialize all priority partitions
+            table = new Table<ITask>({
+                shouldMaterialize: (path) => path.includes("priority"),
+            });
+
+            table.registerIndex("plan", (task) => task.planId ?? "default"); // should not be materialized
+            table.registerIndex("priority", (task) => `${task.priority ?? 0}`); // should be materialized
+
+            table.set("1", { title: "Task One", planId: "p1", priority: 3 });
+            table.set("2", { title: "Task Two", planId: "p1", priority: 2 });
+            table.set("3", { title: "Task Three", planId: "p2", priority: 2 });
+
+            // Apply a filter so that priority partitions are materialized
+            table.applyFilter((task) => (task.priority ?? 0) >= 2);
+
+            // Expect priority partitions to be materialized
+            expect(table.index("priority").partition("2").itemIds()).toBe(
+                table.index("priority").partition("2").itemIds()
+            );
+            expect(table.index("priority").partition("3").itemIds()).toBe(
+                table.index("priority").partition("3").itemIds()
+            );
+
+            // Non-priority partitions should not be materialized
+            expect(table.index("plan").partition("p1").itemIds()).not.toBe(
+                table.index("plan").partition("p1").itemIds()
+            );
+            expect(table.index("plan").partition("p2").itemIds()).not.toBe(
+                table.index("plan").partition("p2").itemIds()
+            );
         });
     });
 
@@ -711,6 +960,7 @@ describe("Table - Unit Tests", () => {
      * | Test                   |   Load:1   |   Load:5   |
      * |------------------------|------------|------------|
      * | N*partition.items()    |   100 ms   |    700 ms  |
+     * | N*partition.items()[m] |   100 ms   |    700 ms  |
      * | N*set()[no-index]      |   300 ms   |   1500 ms  |
      * | N*set()                |   600 ms   |   4200 ms  |
      * | batch(N*set())         |   500 ms   |   2500 ms  |
@@ -731,13 +981,13 @@ describe("Table - Unit Tests", () => {
         const titleSort = (a: ITask, b: ITask) => a.title.localeCompare(b.title);
         const filter = (task: ITask) => task.priority !== undefined && task.priority > 2;
         const planIndex = (task: ITask) => task.planId ?? "default";
-        const perfTable = new Table<ITask>("tasks");
-        const emptyPerfTable = new Table<ITask>("tasks");
+        const perfTable = new Table<ITask>();
+        const emptyPerfTable = new Table<ITask>();
 
         perfTable.registerIndex("plan", planIndex);
         emptyPerfTable.registerIndex("plan", planIndex);
 
-        perfTable.executeBatch((t) => {
+        perfTable.runBatch((t) => {
             for (let i = 0; i < N_TASK; i++) {
                 const task: ITask = {
                     title: `Task ${Math.random().toString(36).substring(7)}`,
@@ -766,8 +1016,16 @@ describe("Table - Unit Tests", () => {
             }
         });
 
+        test(`${N_READ}*partition.items() [materialized]`, () => {
+            perfTable.index("plan").partition("plan-0").applyComparator(titleSort);
+            for (let i = 0; i < N_READ; i++) {
+                const planId = `plan-${Math.floor(Math.random() * N_PLAN)}`;
+                perfTable.index("plan").partition(planId).items();
+            }
+        });
+
         test(`${N_SET_NO_INDEX}*set()[no-view-index]`, () => {
-            const table = new Table<ITask>("tasks");
+            const table = new Table<ITask>();
             for (let i = 0; i < N_SET_NO_INDEX; i++) {
                 const taskId = `task-${Math.floor(Math.random() * N_TASK)}`;
                 const task = perfTable.get(taskId);
@@ -798,7 +1056,7 @@ describe("Table - Unit Tests", () => {
         });
 
         test(`batch(${N_SET_BATCH}*set)`, () => {
-            emptyPerfTable.executeBatch((t) => {
+            emptyPerfTable.runBatch((t) => {
                 for (let i = 0; i < N_SET_BATCH; i++) {
                     const task: ITask = {
                         title: `Task ${Math.random().toString(36).substring(7)}`,
@@ -828,7 +1086,3 @@ describe("Table - Unit Tests", () => {
         });
     });
 });
-
-function expectEqualUnordered(received: string[], expected: string[]) {
-    return received.length === expected.length && [...received].sort().every((val, index) => val === [...expected].sort()[index]);
-}

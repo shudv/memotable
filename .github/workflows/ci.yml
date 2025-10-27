@@ -1,41 +1,54 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
 
 jobs:
-  ci:
-    runs-on: ubuntu-latest
+    ci:
+        runs-on: ubuntu-latest
+        
+        permissions:
+            contents: read
+            checks: write
+            pull-requests: write
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
+            - name: Install pnpm
+              uses: pnpm/action-setup@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'pnpm'
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: "pnpm"
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
 
-      - name: Lint
-        run: pnpm lint
+            - name: Check for changeset
+              if: github.event_name == 'pull_request'
+              uses: changesets/action@v1
+              with:
+                  version: echo "Checking for changesets..."
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Type check
-        run: pnpm typecheck
+            - name: Lint
+              run: pnpm lint
 
-      - name: Run tests
-        run: pnpm test
+            - name: Type check
+              run: pnpm typecheck
 
-      - name: Build
-        run: pnpm build
+            - name: Run tests
+              run: pnpm test
+
+            - name: Build
+              run: pnpm build
