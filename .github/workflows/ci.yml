@@ -10,25 +10,23 @@ permissions:
   pull-requests: write
 
 jobs:
-  build-and-verify:
+  ci:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+            fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: 'pnpm'
-
-      - name: Enable pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@latest --activate
+            node-version: 22
+            cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -36,8 +34,11 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Type check
+        run: pnpm typecheck
+
       - name: Run tests
         run: pnpm test
       
-      - name: Run build
+      - name: Build
         run: pnpm build
