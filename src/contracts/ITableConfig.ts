@@ -1,5 +1,3 @@
-import { IReadOnlyTable } from './IReadOnlyTable';
-
 /**
  * Configuration options for table initialization.
  * @template T Type of items stored in the table
@@ -24,10 +22,9 @@ export interface ITableConfig<T> {
     /**
      * Determine whether a table node should be materialized in memory.
      *
-     * @param node The table node being evaluated
      * @param path Hierarchical path to this node
      * @param isTerminal Whether this is a leaf node with no further partitions
      * @returns true to keep node in memory, false to compute on-demand
      */
-    shouldMaterialize: (node: IReadOnlyTable<T>, path: string[], isTerminal: boolean) => boolean;
+    shouldMaterialize: (path: string[], isTerminal: boolean) => boolean;
 }

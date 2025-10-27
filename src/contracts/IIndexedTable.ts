@@ -1,4 +1,4 @@
-import { IReadOnlyTable } from './IReadOnlyTable';
+import { IReadOnlyTable } from "./IReadOnlyTable";
 
 /**
  * Defines an index configuration.

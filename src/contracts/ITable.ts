@@ -1,5 +1,5 @@
-import { IDeltaTrackedTable } from './IDeltaTrackedTable';
-import { IReadOnlyTable } from './IReadOnlyTable';
+import { IDeltaTrackedTable } from "./IDeltaTrackedTable";
+import { IReadOnlyTable } from "./IReadOnlyTable";
 
 /**
  * Interface for a table that also supports mutation operations on top of basic features.

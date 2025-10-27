@@ -1,8 +1,8 @@
-import { ITable } from './contracts/ITable';
-import { IFilter, IComparator } from './contracts/IViewTable';
-import { IIndex, IIndexDefinition } from './contracts/IIndexedTable';
-import { IDelta } from './contracts/IDeltaTrackedTable';
-import { ITableConfig } from './contracts/ITableConfig';
+import { ITable } from "./contracts/ITable";
+import { IFilter, IComparator } from "./contracts/IViewTable";
+import { IIndex, IIndexDefinition } from "./contracts/IIndexedTable";
+import { IDelta } from "./contracts/IDeltaTrackedTable";
+import { ITableConfig } from "./contracts/ITableConfig";
 
 /**
  * A delimiter to separate path tokens in the internal table path naming scheme.
@@ -19,7 +19,7 @@ import { ITableConfig } from './contracts/ITableConfig';
  * partitions that get created later dynamically as items are added to the table. Otherwise
  * the filter/comparator would need to be applied to each child partition individually.
  */
-const TablePathDelimiter = '////';
+const TablePathDelimiter = "////";
 
 /**
  * Table implementation that supports basic CRUD, batching, indexing, views and change tracking
@@ -27,10 +27,10 @@ const TablePathDelimiter = '////';
 export class Table<T> implements ITable<T> {
     // Table configuration with defaults
     private readonly _config: ITableConfig<T> = {
-        name: '', // Default empty name
+        name: "", // Default empty name
         isEqual: () => false, // Default equality check always returns false
         deltaTracking: true, // Delta tracking enabled by default
-        shouldMaterialize: (_, __, isTerminal) => isTerminal, // Materialize only terminal partitions
+        shouldMaterialize: (_, isTerminal) => isTerminal, // Materialize only terminal partitions
     };
 
     /**
@@ -113,10 +113,10 @@ export class Table<T> implements ITable<T> {
     // Set of listeners subscribed to changes in the table
     private _listeners: Set<(delta: IDelta) => void> = new Set();
 
-    public subscribe(listener: (delta: IDelta) => void): () => void {
+    public subscribe = (listener: (delta: IDelta) => void): (() => void) => {
         this._listeners.add(listener);
         return () => this._listeners.delete(listener);
-    }
+    };
 
     // #endregion
 
@@ -131,19 +131,28 @@ export class Table<T> implements ITable<T> {
         this._comparator = comparator;
         const path = this._getTablePathTokens();
 
-        // Recursion case: If this is an intermediate partition, apply the comparator to all child partitions
+        // Step 1: Apply the comparator to all child partitions
         if (this._hasPartitions()) {
             for (const partition of this._partitions()) {
                 partition.applyComparator(comparator);
             }
         }
-        // Base case: If this is a terminal partition and view has already materialized, then just re-order it
-        else if (this._view && comparator) {
+
+        // Step 2: If this node is to be materialized, update the view accordingly
+        if (this._shouldMaterializeView()) {
             // If the view has already materialized, we need to re-sort it based on the new comparator
-            this._view.sort((id1, id2) => comparator(this._items[id1]!, this._items[id2]!, path));
+            if (comparator) {
+                this._view = (this._view ?? this.itemIds()).sort((id1, id2) =>
+                    comparator(this._items[id1]!, this._items[id2]!, path)
+                );
+            }
+
+            // When comparator is removed, but view is still needed to materialized (because of an applied filter), we can keep the view ordered
+            // as per the existing order (no-op). When new items are added later, they will simply be appended to the end of the view.
         }
 
         this._refreshViewMaterialization(); // Because comparator might have been removed
+        this._notifyListeners([]); // Notify listeners that a comparator change has occurred (empty delta as no items were modified)
     }
 
     /**
@@ -156,20 +165,21 @@ export class Table<T> implements ITable<T> {
         this._filter = filter;
         const path = this._getTablePathTokens();
 
-        // Recursion case: If this table has partitions, apply the filter to all child partitions
+        // Step 1: If this table has partitions, apply the filter to all child partitions
         if (this._hasPartitions()) {
             for (const partition of this._partitions()) {
                 partition.applyFilter(filter);
             }
         }
-        // Base case: If this is a terminal partition and view has already materialized, then apply the new filter
-        else if (this._view && filter) {
+
+        // Step 2: If this node is to be materialized, update the view accordingly
+        if (this._shouldMaterializeView()) {
             // Step 1: Apply filter to the current view so that any existing id's in view that do not pass the new filter are removed (also create a set for the next pass))
             const currentViewSet = new Set<string>();
-            const currentView = this._view; // already ordered by the current comparator
+            const currentView = this._view ?? []; // already ordered by the current comparator
             this._view = [];
             for (const id of currentView) {
-                if (filter(this._items[id]!, path)) {
+                if (!filter || filter(this._items[id]!, path)) {
                     currentViewSet.add(id);
                     this._view.push(id);
                 }
@@ -178,7 +188,7 @@ export class Table<T> implements ITable<T> {
             // Step 2: Scan the entire table and add the id's not in view that now pass the new filter
             const newIds: string[] = [];
             for (const id of this._allItemIds()) {
-                if (!currentViewSet.has(id) && filter(this._items[id]!, path)) {
+                if (!currentViewSet.has(id) && (!filter || filter(this._items[id]!, path))) {
                     newIds.push(id);
                 }
             }
@@ -190,12 +200,12 @@ export class Table<T> implements ITable<T> {
         }
 
         this._refreshViewMaterialization(); // Because filter might have been removed
+        this._notifyListeners([]); // Notify listeners that a filter change has occurred (empty delta as no items were modified)
     }
 
     public refreshView(): void {
         this.applyFilter(this._filter);
         this.applyComparator(this._comparator);
-        this._refreshViewMaterialization();
     }
 
     // #endregion
@@ -236,10 +246,11 @@ export class Table<T> implements ITable<T> {
                 `${this._config.name}${TablePathDelimiter}${name}`,
                 definition,
                 () => this._filter,
-                () => this._comparator
+                () => this._comparator,
+                this._config.shouldMaterialize
             );
             this.refreshIndex(name);
-            this._refreshViewMaterialization(); // Because adding an index makes this a non-terminal partition
+            this._refreshViewMaterialization(); // Because adding an index makes this a non-terminal partition and that can impact materialization
             return true;
         }
 
@@ -258,7 +269,7 @@ export class Table<T> implements ITable<T> {
     public dropIndex(name: string): boolean {
         if (this._indexes[name]) {
             delete this._indexes[name];
-            this._refreshViewMaterialization(); // Because dropping an index may make this a terminal partition
+            this._refreshViewMaterialization(); // Because dropping an index may make this a terminal partition and that can impact materialization
             return true;
         }
 
@@ -290,49 +301,16 @@ export class Table<T> implements ITable<T> {
 
     // #region PRIVATE HELPERS
 
-    // Flag an item as modified, which will be included in the next delta
-    private _flag(id: string): void {
-        this._modifiedIds.add(id);
-    }
-
-    /**
-     * Propagate changes to indexes, views and notify subscribers.
-     * @param updatedIds Array of item IDs that have been updated
-     */
-    private _propagateChanges(updatedIds: string[]) {
-        if (this._isBatchOperationInProgress) {
-            // If a batch operation is in progress, we record the updated id for later processing
-            for (const id of updatedIds) {
-                this._idsUpdatedInCurrentBatch.add(id);
-            }
-        } else {
-            // Step 1: Update indexes if any
-            if (Object.keys(this._indexes).length > 0) {
-                this._applyIndexUpdate(updatedIds);
-            }
-
-            // Step 2: Update view if it has materialized
-            if (this._view) {
-                this._applyViewUpdate(this._view, updatedIds);
-            }
-
-            // Step 3: Notify subscribers about the changes
-            for (const listener of this._listeners) {
-                listener(updatedIds);
-            }
-        }
-    }
-
     /**
      * Core item update method with change detection and subsequent updates
      * to ensure index and view consistency.
      *
      * @param id Item id
      * @param value Item value
-     * @param shouldFlag Whether to _flag the item as modified. Defaults to true.
+     * @param shouldTrack Whether to track the item as modified in the next delta. Defaults to true.
      * @returns True item was actually updated, false otherwise
      */
-    private _setInternal(id: string, value: T | null, shouldFlag: boolean = true): boolean {
+    private _setInternal(id: string, value: T | null): boolean {
         // Step 1: Check if the item needs to be updated
         const currentValue = this.get(id);
         if (
@@ -349,15 +327,39 @@ export class Table<T> implements ITable<T> {
             delete this._items[id];
         }
 
-        // Step 3: Refresh item so that indexes and views are updated
-        this.refresh(id);
+        // Step 3: Propagate changes to derived structures (index, view, subscribers)
+        this._propagateChanges([id]);
 
         // Step 4: Flag the item as modified
-        if (shouldFlag && this._config.deltaTracking) {
+        if (this._config.deltaTracking) {
             this._flag(id);
         }
 
         return true;
+    }
+
+    /**
+     * Propagate changes to indexes, views and notify subscribers.
+     * @param updatedIds Array of item IDs that have been updated
+     */
+    private _propagateChanges(updatedIds: string[]) {
+        if (this._isBatchOperationInProgress) {
+            // If a batch operation is in progress, we record the updated id for later processing
+            for (const id of updatedIds) {
+                this._idsUpdatedInCurrentBatch.add(id);
+            }
+        } else {
+            // Step 1: Update indexes if any
+            this._applyIndexUpdate(updatedIds);
+
+            // Step 2: Update view if it has materialized
+            if (this._view) {
+                this._applyViewUpdate(this._view, updatedIds);
+            }
+
+            // Step 3: Notify subscribers about the changes
+            this._notifyListeners(updatedIds);
+        }
     }
 
     /**
@@ -372,10 +374,10 @@ export class Table<T> implements ITable<T> {
     ): void {
         // Step 1: Calculate update batches for all partitions for given id's
         const batch: Record<string, Record<string, Record<string, T | null>>> = {};
-        for (const id of updatedIds) {
-            for (const indexName of indexNames) {
+        for (const indexName of indexNames) {
+            for (const id of updatedIds) {
                 const current = this._partitionKeys[id]?.[indexName] ?? [];
-                const target = this._indexes[indexName]!.accessor(this.get(id));
+                const target = this._indexes[indexName]!._accessor(this.get(id));
 
                 // Remove from all current partitions
                 for (const key of current) {
@@ -472,6 +474,21 @@ export class Table<T> implements ITable<T> {
     }
 
     /**
+     * Notify all subscribed listeners about the delta of modified ids.
+     * @param delta The list of modified item ids
+     */
+    private _notifyListeners(delta: IDelta): void {
+        for (const listener of this._listeners) {
+            listener(delta);
+        }
+    }
+
+    // Flag an item as modified, which will be included in the next delta
+    private _flag(id: string): void {
+        this._modifiedIds.add(id);
+    }
+
+    /**
      * Merge id's into view using a 2-way merge strategy and preserve ordering invariants.
      * For existing view size N and newId size M, this takes O(N + M*log(M)) time. This is
      * close to linear time for M<<<N (most common case for user triggered singular edits).
@@ -523,47 +540,6 @@ export class Table<T> implements ITable<T> {
     }
 
     /**
-     * View-materialization enables fast full table reads. Typically filter and comparator are applied at
-     * read time, which could be slow for large tables and cpu-heavy if done within tight render loops.
-     * To prevent that, we materialize terminal partitions (i.e., tables without sub-partitions) when
-     * a filter or comparator is applied. Typically terminal partitions are the ones that serve data for
-     * a view on the UI so materializing them is beneficial. Keeping the intermediate tables un-materialized
-     * allows us to avoid unnecessary memory overhead and CPU cost associated with materializing the view.
-     */
-    private _refreshViewMaterialization() {
-        /*
-         * Case 1: Materialize the view if following conditions are met:
-         * 1. The view is not already materialized (i.e., _view is null).
-         * 2. Either a filter or a comparator is applied.
-         * 3. The table does not have sub-partitions (i.e., it is a terminal partition).
-         */
-        if (
-            !this._view &&
-            (this._filter || this._comparator) &&
-            this._config.shouldMaterialize(this, this._getTablePathTokens(), !this._hasPartitions())
-        ) {
-            this._view = this.itemIds();
-        }
-
-        /*
-         * Case 2: Un-materialize the view if following conditions are met:
-         * 1. The view is materialized (i.e., _view is not null).
-         * 2. No filter and comparator is defined OR the table has sub-partitions.
-         */
-        if (
-            this._view &&
-            ((!this._comparator && !this._filter) ||
-                !this._config.shouldMaterialize(
-                    this,
-                    this._getTablePathTokens(),
-                    !this._hasPartitions()
-                ))
-        ) {
-            this._view = null;
-        }
-    }
-
-    /**
      * A custom iterator that yields all partitions across all indexes.
      * @yields ITable<T> - Each partition of the table
      */
@@ -585,6 +561,32 @@ export class Table<T> implements ITable<T> {
         return Object.keys(this._items);
     }
 
+    // Helper to refresh the view materialization state
+    private _refreshViewMaterialization() {
+        // Materialize the view if needed
+        if (!this._view && this._shouldMaterializeView()) {
+            this._view = this.itemIds();
+        }
+
+        // OR Unmaterialize the view if it is no longer needed
+        if (this._view && !this._shouldMaterializeView()) {
+            this._view = null;
+        }
+    }
+
+    // Helper to determine if the view should be materialized based on current state and configuration
+    private _shouldMaterializeView(): boolean {
+        /*
+         * View should be materialized if following conditions are met:
+         * 1. Either a filter or a comparator is applied.
+         * 2. The node is specified to be materialized as per the configuration.
+         */
+        return (
+            !!(this._filter || this._comparator) &&
+            this._config.shouldMaterialize(this._getTablePathTokens(), !this._hasPartitions())
+        );
+    }
+
     // #endregion
 }
 
@@ -599,7 +601,7 @@ interface IRuntimeIndex<T> extends IIndex<T> {
      * A normalized accessor function that always returns an array of strings,
      * representing partition keys associated with the given item for this index.
      */
-    readonly accessor: (item: T | null) => readonly string[];
+    readonly _accessor: (item: T | null) => readonly string[];
 
     /**
      * Access a specific runtime partition within this index.
@@ -617,10 +619,10 @@ interface IRuntimeIndex<T> extends IIndex<T> {
  * table structure that allows sophisticated data organization and query patterns.
  */
 class RuntimeIndex<T> implements IRuntimeIndex<T> {
-    public readonly accessor: (item: T | null) => readonly string[];
+    public readonly _accessor: (item: T | null) => readonly string[];
 
     /** All partitions for this index */
-    private readonly partitions: Record<string, ITable<T>> = {};
+    private readonly _partitions: Record<string, ITable<T>> = {};
 
     /**
      * This constructor initializes a runtime index for a table.
@@ -630,18 +632,19 @@ class RuntimeIndex<T> implements IRuntimeIndex<T> {
      * @param getParentComparator A function that returns the comparator for the parent table, if any.
      */
     public constructor(
-        private readonly name: string,
-        definition: IIndexDefinition<T>,
-        private readonly getParentFilter: () => IFilter<T> | null,
-        private readonly getParentComparator: () => IComparator<T> | null
+        private readonly _name: string,
+        _definition: IIndexDefinition<T>,
+        private readonly _getParentFilter: () => IFilter<T> | null,
+        private readonly _getParentComparator: () => IComparator<T> | null,
+        private readonly _shouldMaterialize: (pathTokens: string[], isTerminal: boolean) => boolean
     ) {
         // Normalize the definition
-        this.accessor = (item: T | null) => {
+        this._accessor = (item: T | null) => {
             if (!item) {
                 return [] as readonly string[];
             }
 
-            const keyOrKeys = definition(item);
+            const keyOrKeys = _definition(item);
             if (!keyOrKeys) {
                 return [] as readonly string[];
             }
@@ -655,32 +658,35 @@ class RuntimeIndex<T> implements IRuntimeIndex<T> {
     }
 
     public keys(): string[] {
-        return Object.keys(this.partitions);
+        return Object.keys(this._partitions);
     }
 
     public partition(key: string): ITable<T> {
         if (key.includes(TablePathDelimiter)) {
-            throw new Error(`InvalidPartitionKey [Index=${this.name}][Partition=${key}]`);
+            throw new Error(`InvalidPartitionKey [Index=${this._name}][Partition=${key}]`);
         }
 
         // Lazily initialize the partition if it does not exist
-        if (!this.partitions[key]) {
-            this.partitions[key] = new Table({
-                name: `${this.name}${TablePathDelimiter}${key}`,
+        if (!this._partitions[key]) {
+            this._partitions[key] = new Table({
+                name: `${this._name}${TablePathDelimiter}${key}`,
                 /*
                  * Change tracking is not needed for sub-partitions because these cannot be edited directly
                  * via the public API. The edits made via the parent table are already tracked at the root
                  * table and hence tracking at any layer below the root is unnecessary.
                  */
                 deltaTracking: false,
+
+                // Propagate the materialization logic to the partition
+                shouldMaterialize: this._shouldMaterialize,
             });
 
             // Propagate the parent filter and comparator to the partition
-            this.partitions[key].applyFilter(this.getParentFilter());
-            this.partitions[key].applyComparator(this.getParentComparator());
+            this._partitions[key].applyFilter(this._getParentFilter());
+            this._partitions[key].applyComparator(this._getParentComparator());
         }
 
-        return this.partitions[key];
+        return this._partitions[key];
     }
 }
 

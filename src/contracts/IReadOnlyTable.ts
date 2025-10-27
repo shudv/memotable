@@ -1,8 +1,8 @@
 // Contracts
-import { IDelta } from './IDeltaTrackedTable';
-import { IIndexedTable } from './IIndexedTable';
-import { IObservable } from './IObservable';
-import { IViewTable } from './IViewTable';
+import { IDelta } from "./IDeltaTrackedTable";
+import { IIndexedTable } from "./IIndexedTable";
+import { IObservable } from "./IObservable";
+import { IViewTable } from "./IViewTable";
 
 /**
  * Interface for a read-only table that supports read operations, indexing, sorting, filtering.
