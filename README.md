@@ -22,8 +22,8 @@ function TaskList({ tasks, filter, comparator }) {
 ```
 
 **Problems with this approach:**
-- If the collection has a stable reference across renders, `useMemo` will return stale results.
-- If the collection gets a new reference every render, `useMemo` recalculates every time — defeating it's purpose.
+- If you mutate the collection in place (keeping the same array reference), `useMemo` can return *stale* results because its cache key hasn’t changed.
+- If you create a new array reference on every render pass, `useMemo` will recompute on every render — defeating its purpose.
 
 ## The Solution
 
@@ -70,7 +70,7 @@ It’s **not** a full state management system like MobX or Zustand. Instead, it�
 ## Core Features
 
 - **Recursive partitioning** – Every index creates partitions (sub-tables), which can themselves be indexed further.  
-- **Materialized views** – Filtered, sorted, and materialized (memoized) partitions for fast reads. (Note that memoization is fully configurable)  
+- **Materialized views** – Filtered, sorted, and materialized (memoized) partitions for fast reads. *(Note: materializing a view caches results for faster reads but increases memory usage; materialization can be enabled/disabled individually for every partition)*
 - **Incremental updates** – Changes propagate only to affected partitions.  
 - **Subscriptions** – Fine-grained listeners for any node or partition.  
 - **Change tracking** – Built-in `nextDelta()` for persistence and sync.  
