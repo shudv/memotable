@@ -5,7 +5,6 @@
 [![CI](https://github.com/shudv/memotable/actions/workflows/ci.yml/badge.svg)](https://github.com/shudv/memotable/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-
 A tiny, zero-dependency, reactive data structure primitive for JavaScript that lets you build **derived**, **indexed**, and **materialized** views over mutable collections — in about **2 KBs**.
 
 ---
@@ -14,7 +13,7 @@ A tiny, zero-dependency, reactive data structure primitive for JavaScript that l
 
 We don’t. I built this library not because the world needs yet another JS abstraction (it doesn’t), but because—
 
-1. This abstraction actually proved useful in reducing JS boilerplate in real production code.  
+1. This abstraction actually proved useful in reducing JS boilerplate in real production code.
 2. It felt like a clean, minimal, and elegant way to index and memoize large derived collections correctly.
 
 ---
@@ -31,10 +30,10 @@ It’s built for scenarios where you maintain large collections and want derived
 
 ## Core ideas
 
-- **Recursive partitioning** – Every index on a table creates partitions (sub-tables), which can themselves be indexed further.  
-- **Derived views** – Each table or partition can be filtered, sorted, and materialized for fast reads.  
-- **Incremental updates** – Changes propagate only to affected partitions, never across the whole tree.  
-- **Subscriptions** – Components (or consumers) can subscribe to any partition and get notified precisely when it changes.  
+- **Recursive partitioning** – Every index on a table creates partitions (sub-tables), which can themselves be indexed further.
+- **Derived views** – Each table or partition can be filtered, sorted, and materialized for fast reads.
+- **Incremental updates** – Changes propagate only to affected partitions, never across the whole tree.
+- **Subscriptions** – Components (or consumers) can subscribe to any partition and get notified precisely when it changes.
 - **Change tracking** – Built-in delta tracking via `nextDelta()` makes it easy to persist or synchronize updates.
 - **Batching** – Multiple updates can be applied in a single batched operation using the `runBatch() API`, triggering just one round of index, view recalculation and subscriber notification.
 
@@ -44,9 +43,9 @@ It’s built for scenarios where you maintain large collections and want derived
 
 See the [React Todo App example](./examples/react/TodoApp.tsx) for a complete implementation showing:
 
-- **Indexing** – Items are automatically distributed across “List 1”, “List 2”, and “Important” views.  
-- **Path-aware sorting** – Different sort orders per partition (e.g., by creation date for lists, by due date for important items).  
-- **Reactive updates** – Real-time UI updates via the [`useTable`](./examples/react/useTable.ts) hook.  
+- **Indexing** – Items are automatically distributed across “List 1”, “List 2”, and “Important” views.
+- **Path-aware sorting** – Different sort orders per partition (e.g., by creation date for lists, by due date for important items).
+- **Reactive updates** – Real-time UI updates via the [`useTable`](./examples/react/useTable.ts) hook.
 - **Dynamic filtering** – Keyword search across all partitions, with cached results across re-renders.
 
 **Quick preview:**

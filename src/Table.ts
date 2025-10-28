@@ -71,7 +71,7 @@ export class Table<T> implements ITable<T> {
                 : allIds;
             const orderedFilteredIds = _comparator
                 ? filteredIds.sort((id1, id2) =>
-                      _comparator(this._items[id1]!, this._items[id2]!, this._getTablePathTokens())
+                      _comparator(this._items[id1]!, this._items[id2]!, this._getTablePathTokens()),
                   )
                 : filteredIds;
             return orderedFilteredIds;
@@ -143,7 +143,7 @@ export class Table<T> implements ITable<T> {
             // If the view has already materialized, we need to re-sort it based on the new comparator
             if (comparator) {
                 this._view = (this._view ?? this.itemIds()).sort((id1, id2) =>
-                    comparator(this._items[id1]!, this._items[id2]!, path)
+                    comparator(this._items[id1]!, this._items[id2]!, path),
                 );
             }
 
@@ -247,7 +247,7 @@ export class Table<T> implements ITable<T> {
                 definition,
                 () => this._filter,
                 () => this._comparator,
-                this._config.shouldMaterialize
+                this._config.shouldMaterialize,
             );
             this.refreshIndex(name);
             this._refreshViewMaterialization(); // Because adding an index makes this a non-terminal partition and that can impact materialization
@@ -370,7 +370,7 @@ export class Table<T> implements ITable<T> {
      */
     private _applyIndexUpdate(
         updatedIds: string[],
-        indexNames: string[] = Object.keys(this._indexes)
+        indexNames: string[] = Object.keys(this._indexes),
     ): void {
         // Step 1: Calculate update batches for all partitions for given id's
         const batch: Record<string, Record<string, Record<string, T | null>>> = {};
@@ -441,7 +441,7 @@ export class Table<T> implements ITable<T> {
 
         // Reset view to an empty array
         const updatedView = _allocateEmptyArray<string>(
-            currentView.length + upserts.length - deletes.length
+            currentView.length + upserts.length - deletes.length,
         );
 
         let duplicateUpserts = false; // Flag to track if we have duplicate upserts
@@ -636,7 +636,7 @@ class RuntimeIndex<T> implements IRuntimeIndex<T> {
         _definition: IIndexDefinition<T>,
         private readonly _getParentFilter: () => IFilter<T> | null,
         private readonly _getParentComparator: () => IComparator<T> | null,
-        private readonly _shouldMaterialize: (pathTokens: string[], isTerminal: boolean) => boolean
+        private readonly _shouldMaterialize: (pathTokens: string[], isTerminal: boolean) => boolean,
     ) {
         // Normalize the definition
         this._accessor = (item: T | null) => {

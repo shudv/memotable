@@ -316,7 +316,7 @@ describe("Table - Unit Tests", () => {
             const viewConfig = { minPriority: 2, sortByPriorityAsc: true };
 
             table.applyFilter(
-                (item) => item.priority !== undefined && item.priority >= viewConfig.minPriority
+                (item) => item.priority !== undefined && item.priority >= viewConfig.minPriority,
             );
             table.applyComparator((a, b) => {
                 if (viewConfig.sortByPriorityAsc) {
@@ -369,14 +369,14 @@ describe("Table - Unit Tests", () => {
             table.registerIndex("title", (item) => item.title);
             table.registerIndex("plan", (item) => item.planId ?? "default");
             table.registerIndex("priority", (item) =>
-                item.priority ? item.priority.toString() : null
+                item.priority ? item.priority.toString() : null,
             );
             table.registerIndex("tags", (item) => item.tags ?? null);
             table.registerIndex("description", (item) =>
-                (item.description ?? "").length > 2 ? "HasDescription" : null
+                (item.description ?? "").length > 2 ? "HasDescription" : null,
             );
             table.registerIndex("isCompleted", (item) =>
-                item.isCompleted ? "completed" : "pending"
+                item.isCompleted ? "completed" : "pending",
             );
         });
 
@@ -453,7 +453,7 @@ describe("Table - Unit Tests", () => {
             table.set("1", { title: "Task One", priority: 1 });
 
             expect(table.registerIndex("priority1", (item) => `${item.priority?.toString()}`)).toBe(
-                true
+                true,
             );
             const index = table.index("priority1");
 
@@ -462,7 +462,7 @@ describe("Table - Unit Tests", () => {
 
             // try re-register same index with a different definition
             expect(table.registerIndex("priority1", (item) => `${item.priority?.toString()}`)).toBe(
-                false
+                false,
             );
             const index2 = table.index("priority1");
 
@@ -475,7 +475,7 @@ describe("Table - Unit Tests", () => {
         test("registerIndex - readonly keys", () => {
             table.set("1", { title: "Task One", priority: 1 });
             table.registerIndex("priority1", (item) =>
-                Object.freeze([`${item.priority?.toString()}`])
+                Object.freeze([`${item.priority?.toString()}`]),
             );
             const index = table.index("priority1");
 
@@ -485,7 +485,7 @@ describe("Table - Unit Tests", () => {
 
         test("registerIndex with invalid name", () => {
             expect(() =>
-                table.registerIndex("invalid/////name", (item) => `${item.priority?.toString()}`)
+                table.registerIndex("invalid/////name", (item) => `${item.priority?.toString()}`),
             ).toThrow();
         });
 
@@ -504,7 +504,7 @@ describe("Table - Unit Tests", () => {
 
             // An index that references an external config to determine partitioning
             table.registerIndex("custom", (item) =>
-                item.priority && item.priority > indexConfig.priorityCutOff ? "high" : "low"
+                item.priority && item.priority > indexConfig.priorityCutOff ? "high" : "low",
             );
 
             table.set("1", { title: "Task One", priority: 1 });
@@ -625,7 +625,7 @@ describe("Table - Unit Tests", () => {
 
             // Create a sub-partition for high priority tasks
             plan1Partition.registerIndex("highPriority", (task) =>
-                (task.priority ?? 0) >= 5 ? "high" : "low"
+                (task.priority ?? 0) >= 5 ? "high" : "low",
             );
             const highPriorityIndex = plan1Partition.index("highPriority");
             const highPriorityPartition = highPriorityIndex.partition("high");
@@ -633,7 +633,7 @@ describe("Table - Unit Tests", () => {
 
             // Create a sub-partition for completed tasks
             highPriorityPartition.registerIndex("completed", (task) =>
-                task.isCompleted ? "completed" : "pending"
+                task.isCompleted ? "completed" : "pending",
             );
             const completedIndex = highPriorityPartition.index("completed");
             const completedPartition = completedIndex.partition("completed");
@@ -654,7 +654,7 @@ describe("Table - Unit Tests", () => {
 
             // Create a status partition on the board view
             plan1BoardPartition.registerIndex("status", (task) =>
-                task.isCompleted ? "completed" : "pending"
+                task.isCompleted ? "completed" : "pending",
             );
             const plan1BoardStatusIndex = plan1BoardPartition.index("status");
             const plan1BoardCompletedPartition = plan1BoardStatusIndex.partition("completed");
@@ -691,7 +691,7 @@ describe("Table - Unit Tests", () => {
 
             // Create a priority class partitioning with one partition that has no items
             plan1Partition.registerIndex("priority", (task) =>
-                (task.priority ?? 0) > 0 ? "prioritized" : "not-prioritized"
+                (task.priority ?? 0) > 0 ? "prioritized" : "not-prioritized",
             );
             const plan1PriorityIndex = plan1Partition.index("priority");
             const prioritizedPlan1Partition = plan1PriorityIndex.partition("prioritized");
@@ -901,10 +901,10 @@ describe("Table - Unit Tests", () => {
             // expect terminal partitions to be materialized
             // HACK: Given the table does not expose materialization state, we check by reference equality
             expect(table.index("plan").partition("p1").itemIds()).toBe(
-                table.index("plan").partition("p1").itemIds()
+                table.index("plan").partition("p1").itemIds(),
             );
             expect(table.index("plan").partition("p2").itemIds()).toBe(
-                table.index("plan").partition("p2").itemIds()
+                table.index("plan").partition("p2").itemIds(),
             );
 
             // Non-terminal partition should not be materialized
@@ -935,18 +935,18 @@ describe("Table - Unit Tests", () => {
 
             // Expect priority partitions to be materialized
             expect(table.index("priority").partition("2").itemIds()).toBe(
-                table.index("priority").partition("2").itemIds()
+                table.index("priority").partition("2").itemIds(),
             );
             expect(table.index("priority").partition("3").itemIds()).toBe(
-                table.index("priority").partition("3").itemIds()
+                table.index("priority").partition("3").itemIds(),
             );
 
             // Non-priority partitions should not be materialized
             expect(table.index("plan").partition("p1").itemIds()).not.toBe(
-                table.index("plan").partition("p1").itemIds()
+                table.index("plan").partition("p1").itemIds(),
             );
             expect(table.index("plan").partition("p2").itemIds()).not.toBe(
-                table.index("plan").partition("p2").itemIds()
+                table.index("plan").partition("p2").itemIds(),
             );
         });
     });
