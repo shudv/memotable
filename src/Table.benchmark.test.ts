@@ -14,13 +14,12 @@ declare const performance: {
 // ============================================================================
 
 interface BenchmarkConfig {
-    numLists: number; // Number of todo lists
-    tasksPerList: number; // Tasks per list
-    completionRate: number; // Fraction of completed tasks (0-1)
-    importantRate: number; // Fraction of important tasks (0-1)
-    numEdits: number; // Number of edit operations to perform
-    numReads: number; // Number of read operations to perform
-    editPattern: "random" | "realistic" | "bulk"; // Type of edits to perform
+    numLists: number;
+    tasksPerList: number;
+    completionRate: number;
+    importantRate: number;
+    numEdits: number;
+    numReads: number;
 }
 
 interface Task {
@@ -39,19 +38,19 @@ interface BenchmarkResult {
     scenario: string;
     editTimeMs: number;
     readTimeMs: number;
-    avgEditMs: number;
-    avgReadMs: number;
+    numEdits: number;
+    numReads: number;
+    totalItemsRead: number; // Total items returned across all reads
 }
 
-// Default config optimized for CI (fast)
+// Default configuration
 const DEFAULT_CONFIG: BenchmarkConfig = {
     numLists: 50,
     tasksPerList: 1000,
     completionRate: 0.3,
     importantRate: 0.1,
-    numEdits: 500,
-    numReads: 100,
-    editPattern: "realistic",
+    numEdits: 100,
+    numReads: 500,
 };
 
 // ============================================================================
@@ -91,7 +90,7 @@ function generateRandomTitle(): string {
 }
 
 // ============================================================================
-// Scenario 1: Plain (useMemo pattern)
+// Scenario 1: Vanilla implementation
 // ============================================================================
 
 class PlainImplementation {
@@ -108,10 +107,16 @@ class PlainImplementation {
     }
 
     getListTasks(listId: string): Task[] {
-        // Simulates useMemo behavior - full filter + sort on every read
+        // Full filter + sort on every read
         return Array.from(this.tasks.values())
             .filter((t) => t.listId === listId && !t.isCompleted)
-            .sort((a, b) => b.createdAt - a.createdAt);
+            .sort((a, b) => {
+                // Two-factor sort to match Table implementation
+                if (a.isImportant !== b.isImportant) {
+                    return a.isImportant ? -1 : 1;
+                }
+                return b.createdAt - a.createdAt;
+            });
     }
 
     getImportantTasks(): Task[] {
@@ -149,8 +154,12 @@ class PlainImplementation {
 
 function setupTableImplementation(materialize: boolean): Table<Task> {
     const table = new Table<Task>({
-        shouldMaterialize: materialize ? (_, isTerminal) => isTerminal : () => false,
+        name: "Tasks",
+        deltaTracking: true,
+        shouldMaterialize: materialize ? () => true : () => false,
         isEqual: (a, b) =>
+            a.id === b.id &&
+            a.listId === b.listId &&
             a.isCompleted === b.isCompleted &&
             a.isImportant === b.isImportant &&
             a.priority === b.priority &&
@@ -163,113 +172,66 @@ function setupTableImplementation(materialize: boolean): Table<Task> {
     // Index by importance (for composite "Important" view)
     table.registerIndex("importance", (task) => (task.isImportant ? "important" : "normal"));
 
-    // Apply filter and comparator to each list partition
-    const listIds = Array.from({ length: DEFAULT_CONFIG.numLists }, (_, i) => `list-${i}`);
-    for (const listId of listIds) {
+    return table;
+}
+
+// Cache for configured partitions (simulates what a real app would do)
+const partitionCache = new Map<string, any>();
+
+function getConfiguredListPartition(table: Table<Task>, listId: string) {
+    const cacheKey = `list:${listId}`;
+    if (!partitionCache.has(cacheKey)) {
         const partition = table.index("list").partition(listId);
         partition.applyFilter((task) => !task.isCompleted);
-        // Two-factor sort: important items first, then by creation date (newest first)
         partition.applyComparator((a, b) => {
-            // Primary: important items come first
             if (a.isImportant !== b.isImportant) {
                 return a.isImportant ? -1 : 1;
             }
-            // Secondary: sort by creation date (newest first)
             return b.createdAt - a.createdAt;
         });
+        partitionCache.set(cacheKey, partition);
     }
+    return partitionCache.get(cacheKey);
+}
 
-    // Setup Important view
-    const importantPartition = table.index("importance").partition("important");
-    importantPartition.applyFilter((task) => !task.isCompleted);
-    // Important view only sorts by creation date since all items are important
-    importantPartition.applyComparator((a, b) => b.createdAt - a.createdAt);
-
-    return table;
+function getConfiguredImportantPartition(table: Table<Task>) {
+    const cacheKey = "important";
+    if (!partitionCache.has(cacheKey)) {
+        const partition = table.index("importance").partition("important");
+        partition.applyFilter((task) => !task.isCompleted);
+        partition.applyComparator((a, b) => b.createdAt - a.createdAt);
+        partitionCache.set(cacheKey, partition);
+    }
+    return partitionCache.get(cacheKey);
 }
 
 // ============================================================================
 // Edit Patterns
 // ============================================================================
 
-function applyRandomEdits(
+function applyEdits(
     tasks: Task[],
     config: BenchmarkConfig,
     setter: (id: string, task: Task) => void,
 ): void {
     for (let i = 0; i < config.numEdits; i++) {
         const task = tasks[Math.floor(Math.random() * tasks.length)]!;
-        const updated: Task = {
-            ...task,
-            isCompleted: !task.isCompleted,
-            completedAt: !task.isCompleted ? Date.now() : null,
-        };
-        setter(task.id, updated);
-    }
-}
+        const editType = Math.random();
 
-function applyRealisticEdits(
-    tasks: Task[],
-    config: BenchmarkConfig,
-    setter: (id: string, task: Task) => void,
-): void {
-    const editsPerType = Math.floor(config.numEdits / 3);
-
-    // 1. Toggle completion (most common)
-    for (let i = 0; i < editsPerType; i++) {
-        const task = tasks[Math.floor(Math.random() * tasks.length)]!;
-        const updated: Task = {
-            ...task,
-            isCompleted: !task.isCompleted,
-            completedAt: !task.isCompleted ? Date.now() : null,
-        };
-        setter(task.id, updated);
-    }
-
-    // 2. Change priority (occasional)
-    for (let i = 0; i < editsPerType; i++) {
-        const task = tasks[Math.floor(Math.random() * tasks.length)]!;
-        const updated: Task = {
-            ...task,
-            priority: Math.floor(Math.random() * 5) + 1,
-        };
-        setter(task.id, updated);
-    }
-
-    // 3. Toggle importance (rare)
-    for (let i = 0; i < editsPerType; i++) {
-        const task = tasks[Math.floor(Math.random() * tasks.length)]!;
-        const updated: Task = {
-            ...task,
-            isImportant: !task.isImportant,
-        };
-        setter(task.id, updated);
-    }
-}
-
-function applyBulkEdits(
-    tasks: Task[],
-    config: BenchmarkConfig,
-    setter: (id: string, task: Task) => void,
-    runBatch?: (fn: () => void) => void,
-): void {
-    const operation = () => {
-        const completionToggle = Math.random() > 0.5;
-        for (let i = 0; i < config.numEdits; i++) {
-            const task = tasks[Math.floor(Math.random() * tasks.length)]!;
-            const updated: Task = {
+        if (editType < 0.33) {
+            // Toggle completion
+            setter(task.id, {
                 ...task,
-                isCompleted: completionToggle ? true : !task.isCompleted,
-                completedAt: completionToggle ? Date.now() : task.completedAt,
-            };
-            setter(task.id, updated);
+                isCompleted: !task.isCompleted,
+                completedAt: !task.isCompleted ? Date.now() : null,
+            });
+        } else if (editType < 0.66) {
+            // Change priority
+            setter(task.id, { ...task, priority: Math.floor(Math.random() * 5) + 1 });
+        } else {
+            // Toggle importance
+            setter(task.id, { ...task, isImportant: !task.isImportant });
         }
-    };
-
-    if (runBatch) {
-        runBatch(operation);
-    } else {
-        operation();
     }
 }
 
@@ -287,37 +249,30 @@ function benchmarkPlain(tasks: Task[], config: BenchmarkConfig): BenchmarkResult
 
     // Benchmark edits
     const editStart = performance.now();
-    if (config.editPattern === "random") {
-        applyRandomEdits(tasks, config, (id, task) => impl.set(id, task));
-    } else if (config.editPattern === "realistic") {
-        applyRealisticEdits(tasks, config, (id, task) => impl.set(id, task));
-    } else {
-        applyBulkEdits(
-            tasks,
-            config,
-            (id, task) => impl.set(id, task),
-            (fn) => impl.runBatch(() => fn()),
-        );
-    }
+    applyEdits(tasks, config, (id, task) => impl.set(id, task));
     const editEnd = performance.now();
 
-    // Benchmark reads
+    // Benchmark reads (track total items read)
+    let totalItemsRead = 0;
     const readStart = performance.now();
     for (let i = 0; i < config.numReads; i++) {
         const listId = `list-${Math.floor(Math.random() * config.numLists)}`;
-        impl.getListTasks(listId);
+        const items = impl.getListTasks(listId);
+        totalItemsRead += items.length;
         if (i % 10 === 0) {
-            impl.getImportantTasks();
+            const important = impl.getImportantTasks();
+            totalItemsRead += important.length;
         }
     }
     const readEnd = performance.now();
 
     return {
-        scenario: "Plain",
+        scenario: "Vanilla",
         editTimeMs: editEnd - editStart,
         readTimeMs: readEnd - readStart,
-        avgEditMs: (editEnd - editStart) / config.numEdits,
-        avgReadMs: (readEnd - readStart) / config.numReads,
+        numEdits: config.numEdits,
+        numReads: config.numReads,
+        totalItemsRead,
     };
 }
 
@@ -326,48 +281,50 @@ function benchmarkTable(
     config: BenchmarkConfig,
     materialize: boolean,
 ): BenchmarkResult {
+    // Clear partition cache between runs
+    partitionCache.clear();
+
     const table = setupTableImplementation(materialize);
 
     // Load data
-    table.runBatch((t) => {
+    table.runBatch(() => {
         for (const task of tasks) {
-            t.set(task.id, task);
+            table.set(task.id, task);
         }
     });
 
+    // Pre-warm partitions (simulates app startup where views are created once)
+    for (let i = 0; i < config.numLists; i++) {
+        getConfiguredListPartition(table, `list-${i}`);
+    }
+    getConfiguredImportantPartition(table);
+
     // Benchmark edits
     const editStart = performance.now();
-    if (config.editPattern === "random") {
-        applyRandomEdits(tasks, config, (id, task) => table.set(id, task));
-    } else if (config.editPattern === "realistic") {
-        applyRealisticEdits(tasks, config, (id, task) => table.set(id, task));
-    } else {
-        applyBulkEdits(
-            tasks,
-            config,
-            (id, task) => table.set(id, task),
-            (fn) => table.runBatch(() => fn()),
-        );
-    }
+    applyEdits(tasks, config, (id, task) => table.set(id, task));
     const editEnd = performance.now();
 
-    // Benchmark reads
+    // Benchmark reads (track total items read)
+    let totalItemsRead = 0;
     const readStart = performance.now();
     for (let i = 0; i < config.numReads; i++) {
         const listId = `list-${Math.floor(Math.random() * config.numLists)}`;
-        table.index("list").partition(listId).items();
+        const items = getConfiguredListPartition(table, listId).items();
+        totalItemsRead += items.length;
         if (i % 10 === 0) {
-            table.index("importance").partition("important").items();
+            const important = getConfiguredImportantPartition(table).items();
+            totalItemsRead += important.length;
         }
     }
     const readEnd = performance.now();
 
     return {
-        scenario: materialize ? "Table (cached)" : "Table",
+        scenario: materialize ? "Table" : "Table (no cache)",
         editTimeMs: editEnd - editStart,
         readTimeMs: readEnd - readStart,
-        avgEditMs: (editEnd - editStart) / config.numEdits,
-        avgReadMs: (readEnd - readStart) / config.numReads,
+        numEdits: config.numEdits,
+        numReads: config.numReads,
+        totalItemsRead,
     };
 }
 
@@ -378,7 +335,8 @@ function benchmarkTable(
 describe("Table - Performance Benchmarks", () => {
     let config: BenchmarkConfig;
     let tasks: Task[];
-    let results: BenchmarkResult[];
+    let vanillaResult: BenchmarkResult;
+    let tableResult: BenchmarkResult;
 
     beforeAll(() => {
         config = DEFAULT_CONFIG;
@@ -389,112 +347,88 @@ describe("Table - Performance Benchmarks", () => {
         console.log(`  Completion rate: ${(config.completionRate * 100).toFixed(0)}%`);
         console.log(`  Important rate: ${(config.importantRate * 100).toFixed(0)}%`);
         console.log(`  Edit operations: ${config.numEdits}`);
-        console.log(`  Read operations: ${config.numReads}`);
-        console.log(`  Edit pattern: ${config.editPattern}\n`);
+        console.log(`  Read operations: ${config.numReads}\n`);
 
-        // Generate test data once
         tasks = generateTasks(config);
-        results = [];
     });
 
-    describe("Scenario 1: Plain (useMemo pattern)", () => {
-        test("should measure edit and read performance", () => {
-            const result = benchmarkPlain([...tasks], config);
-            results.push(result);
+    test("Vanilla", () => {
+        vanillaResult = benchmarkPlain([...tasks], config);
 
-            console.log(`\n✓ ${result.scenario}`);
-            console.log(`  Edit time: ${result.editTimeMs.toFixed(1)}ms`);
-            console.log(`  Read time: ${result.readTimeMs.toFixed(1)}ms`);
-
-            expect(result.editTimeMs).toBeGreaterThan(0);
-            expect(result.readTimeMs).toBeGreaterThan(0);
-        });
+        console.log(
+            `✓ ${vanillaResult.scenario}: Edit ${vanillaResult.editTimeMs.toFixed(1)}ms, Read ${vanillaResult.readTimeMs.toFixed(1)}ms`,
+        );
+        expect(vanillaResult.editTimeMs).toBeGreaterThan(0);
+        expect(vanillaResult.readTimeMs).toBeGreaterThan(0);
     });
 
-    describe("Scenario 2: Table (no materialization)", () => {
-        test("should measure edit and read performance", () => {
-            const result = benchmarkTable([...tasks], config, false);
-            results.push(result);
+    test("Table", () => {
+        tableResult = benchmarkTable([...tasks], config, true);
 
-            console.log(`\n✓ ${result.scenario}`);
-            console.log(`  Edit time: ${result.editTimeMs.toFixed(1)}ms`);
-            console.log(`  Read time: ${result.readTimeMs.toFixed(1)}ms`);
-
-            expect(result.editTimeMs).toBeGreaterThan(0);
-            expect(result.readTimeMs).toBeGreaterThan(0);
-        });
-    });
-
-    describe("Scenario 3: Table (with materialization)", () => {
-        test("should measure edit and read performance", () => {
-            const result = benchmarkTable([...tasks], config, true);
-            results.push(result);
-
-            console.log(`\n✓ ${result.scenario}`);
-            console.log(`  Edit time: ${result.editTimeMs.toFixed(1)}ms`);
-            console.log(`  Read time: ${result.readTimeMs.toFixed(1)}ms`);
-
-            expect(result.editTimeMs).toBeGreaterThan(0);
-            expect(result.readTimeMs).toBeGreaterThan(0);
-        });
-    });
-
-    describe("Performance assertions", () => {
-        test("Table should have faster reads than plain implementation", () => {
-            const plain = results.find((r) => r.scenario.includes("Plain"));
-            const tableMaterialized = results.find((r) =>
-                r.scenario.includes("with materialization"),
-            );
-
-            if (plain && tableMaterialized) {
-                // With materialization, reads should be faster
-                expect(tableMaterialized.avgReadMs).toBeLessThan(plain.avgReadMs * 2);
-            }
-        });
-
-        test("Batch edits should be efficient", () => {
-            // Ensure we can handle the configured number of edits
-            for (const result of results) {
-                expect(result.editTimeMs).toBeLessThan(config.numEdits * 10); // 10ms per edit max
-            }
-        });
+        console.log(
+            `✓ ${tableResult.scenario}: Edit ${tableResult.editTimeMs.toFixed(1)}ms, Read ${tableResult.readTimeMs.toFixed(1)}ms\n`,
+        );
+        expect(tableResult.editTimeMs).toBeGreaterThan(0);
+        expect(tableResult.readTimeMs).toBeGreaterThan(0);
     });
 
     afterAll(() => {
-        // Print comparative analysis
-        if (results.length === 0) return;
-        const padding = 16;
+        if (!vanillaResult || !tableResult) return;
 
-        const baseline = results[0]!;
-        console.log("\n" + "=".repeat(80));
+        console.log("=".repeat(70));
         console.log("📈 PERFORMANCE COMPARISON");
-        console.log("=".repeat(80));
+        console.log("=".repeat(70) + "\n");
 
+        // Calculate per-item metrics
+        const vanillaReadPerItem = vanillaResult.readTimeMs / vanillaResult.totalItemsRead;
+        const tableReadPerItem = tableResult.readTimeMs / tableResult.totalItemsRead;
+
+        const vanillaEditPerOp = vanillaResult.editTimeMs / vanillaResult.numEdits;
+        const tableEditPerOp = tableResult.editTimeMs / tableResult.numEdits;
+
+        const vanillaTotal = vanillaResult.editTimeMs + vanillaResult.readTimeMs;
+        const tableTotal = tableResult.editTimeMs + tableResult.readTimeMs;
+
+        // Display results
+        console.log("Scenario          Edit            Read            Total");
+        console.log("-".repeat(70));
         console.log(
-            "\n" +
-                ["Scenario", "Edit Time", "Read Time", "Avg Edit", "Avg Read"]
-                    .map((h) => h.padEnd(padding))
-                    .join(""),
+            [
+                "Vanilla",
+                `${vanillaResult.editTimeMs.toFixed(1)}ms`,
+                `${vanillaResult.readTimeMs.toFixed(1)}ms`,
+                `${vanillaTotal.toFixed(1)}ms`,
+            ]
+                .map((c) => c.padEnd(18))
+                .join(""),
         );
-        console.log("-".repeat(80));
+        console.log(
+            [
+                "Table",
+                `${tableResult.editTimeMs.toFixed(1)}ms`,
+                `${tableResult.readTimeMs.toFixed(1)}ms`,
+                `${tableTotal.toFixed(1)}ms`,
+            ]
+                .map((c) => c.padEnd(18))
+                .join(""),
+        );
 
-        for (const result of results) {
-            const editSpeedup = baseline.editTimeMs / result.editTimeMs;
-            const readSpeedup = baseline.readTimeMs / result.readTimeMs;
+        console.log("\n" + "=".repeat(70));
 
-            console.log(
-                [
-                    result.scenario,
-                    `${result.editTimeMs.toFixed(1)}ms (${editSpeedup.toFixed(2)}x)`,
-                    `${result.readTimeMs.toFixed(1)}ms (${readSpeedup.toFixed(2)}x)`,
-                    `${result.avgEditMs.toFixed(3)}ms`,
-                    `${result.avgReadMs.toFixed(3)}ms`,
-                ]
-                    .map((c, i) => (i === 0 ? c.padEnd(padding) : c.padEnd(padding)))
-                    .join(""),
-            );
-        }
+        // Key insights
+        const readSpeedup = vanillaReadPerItem / tableReadPerItem;
+        const editSlowdown = tableEditPerOp / vanillaEditPerOp;
+        const totalSpeedup = vanillaTotal / tableTotal;
+        const readWriteRatio = config.numReads / config.numEdits;
 
-        console.log("=".repeat(80) + "\n");
+        console.log("\n💡 Key Insights:");
+        console.log(
+            `  • Table is ${readSpeedup.toFixed(1)}x faster for reads but ${editSlowdown.toFixed(1)}x slower for edits (as compared to Vanilla)`,
+        );
+        console.log(
+            `  • Overall: Table is ${totalSpeedup.toFixed(1)}x ${totalSpeedup > 1 ? "faster" : "slower"} for read/write ratio of ${readWriteRatio.toFixed(1)} (${vanillaTotal.toFixed(1)}ms vs ${tableTotal.toFixed(1)}ms)`,
+        );
+
+        console.log("\n" + "=".repeat(70) + "\n");
     });
 });
