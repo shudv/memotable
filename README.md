@@ -7,13 +7,6 @@
 
 **Zero dependencies.** Reactive, indexed and memoized in-memory tables and views — all in about **2 KB**.
 
-## Why another JS library?
-
-We don’t *need* another one. I created `memotable` not out of necessity but because:
-
-1. It consistently reduced boilerplate in real-world projects, and resulted in simpler/better-performing React components.
-2. The abstraction felt minimal yet expressive — an elegant way to index and memoize large derived collections without overengineering.
-
 ## The Problem
 
 Developers often reach for `useMemo` to cache filtered or sorted collections, but that quickly becomes a readability, correctness or a performance trap.
@@ -29,49 +22,44 @@ function TaskList({ tasks, filter, comparator }) {
 ```
 
 **Problems with this approach:**
-- If the collection is updated in place, `useMemo` can return stale results.
-- If a new reference is created on every update, `useMemo` recalculates every time — defeating its purpose.
-
----
+- If the collection has a stable reference across renders, `useMemo` will return stale results.
+- If the collection gets a new reference every render, `useMemo` recalculates every time — defeating it's purpose.
 
 ## The Solution
 
-`memotable` introduces **incremental updates**, **derived materialized views**, and **subscriptions**:
+`memotable` introduces **materialized views**, **incremental updates**, and **subscriptions**:
 
 ```tsx
-const taskTable = new Table<Task>(); // ✅ Structure defined once
+const taskTable = new Table<Task>(); // Structure defined once
 taskTable.applyFilter(filter); // ✅ Filter applied and maintained incrementally
-taskTable.applyComparator(comparator); // ✅ Comparator applied efficiently
+taskTable.applyComparator(comparator); // ✅ Comparator applied and maintained incrementally
 
-function TaskList({ taskTable }) {
-  const tasks = useTable(taskTable); // Subscribes reactively
+function TaskList({ taskTable }) { // ✅ Simpler React component that just renders the data in the table
+  const tasks = useTable(taskTable); // ✅ Subscription that is only notified when the table gets updated (referential stability of `taskTable` is inconsequential)
   return <div>{tasks.map((t) => <Task key={t.id} {...t} />)}</div>;
 }
 ```
 
 **Benefits:**
 - **Lighter render passes** – Filters and sorts are applied outside the render loop.
-- **Less re-renders** – Derived results update only when data actually changes.
-
----
+- **Less re-renders** – A table partition notified subscribers only when it sees any change (for cases when we have multiple partitions, the example above only has one).
 
 ## When should you use `memotable`?
 
 You probably *don’t* need it for simple apps. But it shines in the middle ground between trivial and overengineered:
 
 ✅ Use it when:
-- Your data set is large enough that filtering/sorting cause visible frame drops (~10ms+).
+- Your data set is large enough that filtering/sorting frequently can cause visible frame drops (~10ms+).
 - Your data changes frequently (real-time sync, live collaboration, etc.).
 - You need efficient, indexed access for reads.
 - You regularly sync data to a persistent cache (e.g., IndexedDB).
 
 🚫 Avoid it when:
-- Your data set is small enough that plain `.filter()`/`.sort()` in render is fine.
-- The complexity of derived views outweighs the performance gain.
+- Your data set is small enough that plain `.filter()`/`.sort()` in a render pass is super fast (say <1ms) OR the number of render passes itself are low enough.
+- The complexity of maintaining derived views correctly outweighs the performance gain.
+- Your data-set is so huge that even a single sort/filter pass is noticeably janky (`memotable` reduces sort/filter pass but does not eliminate it entirely). At that point, consider using a web worker for heavy computation or re-design your app to not require heavy data processing on the client.
 
 The philosophy is simple: **React components should render data, not process it.**
-
----
 
 ## What `memotable` is *not*
 
@@ -82,13 +70,11 @@ It’s **not** a full state management system like MobX or Zustand. Instead, it�
 ## Core Features
 
 - **Recursive partitioning** – Every index creates partitions (sub-tables), which can themselves be indexed further.  
-- **Derived views** – Filtered, sorted, and materialized partitions for fast reads.  
+- **Materialized views** – Filtered, sorted, and materialized (memoized) partitions for fast reads. (Note that memoization is fully configurable)  
 - **Incremental updates** – Changes propagate only to affected partitions.  
 - **Subscriptions** – Fine-grained listeners for any node or partition.  
 - **Change tracking** – Built-in `nextDelta()` for persistence and sync.  
 - **Batching** – Apply multiple updates with `runBatch()`, triggering a single recalculation cycle.
-
----
 
 ## Example
 
@@ -141,8 +127,6 @@ function App() {
 ```bash
 pnpm demo
 ```
-
----
 
 ## License
 
