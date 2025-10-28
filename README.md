@@ -53,13 +53,12 @@ You probably *don’t* need it for simple apps. But it shines in the middle grou
 - Your data changes frequently (real-time sync, live collaboration, etc.).
 - You need efficient, indexed access for reads.
 - You regularly sync data to a persistent cache (e.g., IndexedDB).
+- You feel uneasy with a lot of code running in render loops, even if it does not show up on performance traces :) 
 
 🚫 Avoid it when:
-- Your data set is small enough that plain `.filter()`/`.sort()` in a render pass is super fast (say <1ms) OR the number of render passes itself are low enough.
-- The complexity of maintaining derived views correctly outweighs the performance gain.
+- Your data set is small enough that plain `.filter()`/`.sort()` in a render pass is super fast (say <1ms) OR the number of render passes itself are naturally low enough.
+- The complexity of maintaining derived views correctly, outweighs the performance gain.
 - Your data-set is so huge that even a single sort/filter pass is noticeably janky (`memotable` reduces sort/filter pass but does not eliminate it entirely). At that point, consider using a web worker for heavy computation or re-design your app to not require heavy data processing on the client.
-
-The philosophy is simple: **React components should render data, not process it.**
 
 ## What `memotable` is *not*
 
