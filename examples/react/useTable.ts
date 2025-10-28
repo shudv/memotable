@@ -31,7 +31,7 @@ export function useTable<T>(table: IReadOnlyTable<T>): T[] {
             table.subscribe(() => {
                 setItems(table.items());
             }),
-        [table.subscribe]
+        [table.subscribe],
     );
 
     return items;

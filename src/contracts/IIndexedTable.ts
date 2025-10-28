@@ -13,7 +13,7 @@ import { IReadOnlyTable } from "./IReadOnlyTable";
  * ```
  */
 export type IIndexDefinition<T> = (
-    item: T
+    item: T,
 ) => string | string[] | readonly string[] | null | undefined;
 
 /**

@@ -26,6 +26,7 @@
         "test:watch": "vitest",
         "lint": "eslint .",
         "format": "prettier --write .",
+        "format:check": "prettier --check .",
         "typecheck": "tsc --noEmit",
         "prepublishOnly": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
         "release": "pnpm changeset version && pnpm install && git add . && git commit -m 'chore: version bump' && git push",
@@ -82,7 +83,7 @@
             "eslint --fix",
             "prettier --write"
         ],
-        "*.{json,md}": [
+        "*.{js,json,md,css,html}": [
             "prettier --write"
         ]
     },
