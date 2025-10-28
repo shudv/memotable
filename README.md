@@ -11,7 +11,7 @@
 
 We don’t *need* another one. I created `memotable` not out of necessity but because:
 
-1. It consistently reduced boilerplate in real-world projects.
+1. It consistently reduced boilerplate in real-world projects, and resulted in simpler/better-performing React components.
 2. The abstraction felt minimal yet expressive — an elegant way to index and memoize large derived collections without overengineering.
 
 ## The Problem
