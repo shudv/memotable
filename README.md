@@ -209,8 +209,8 @@ Memotable is designed to integrate seamlessly with existing tools:
 import { useTable } from "memotable/react";
 
 function MyComponent({ table }) {
-    const items = useTable(table); // Auto-subscribes, triggers re-render on change and clean-up on unmount
-    return <div>{items.length} items</div>;
+    useTable(table); // Auto-subscribes, triggers re-render on change and cleans up on unmount
+    return <div>{table.items().length} items</div>;
 }
 ```
 
