@@ -6,58 +6,48 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Try it live](https://img.shields.io/badge/Try%20it-live-ff69b4)](https://codesandbox.io/p/sandbox/c9lv4v)
 
-**Zero dependencies.** Reactive, indexed and memoized in-memory tables and views — all in **<2 KB**. Written in TypeScript with full type definitions. ESM + CJS compatible. Side-effects free.
+**Zero dependencies.** Reactive, indexed and memoized in-memory tables and views — all in **<2 KB**.  
+Written in TypeScript with full type definitions. ESM + CJS compatible. Side-effects free.
 
-Memotable is a **reactive data structure** for managing filtered, sorted, and indexed collections with **incremental updates** and **materialized views**. Think of it as an in-memory database engine optimized for reactive state management in JavaScript applications.
+> **Incremental memoization for collections.**
+>
+> `memotable` is not another state management library.  
+> It exists because most collection memoization people do with `useMemo` or similar hooks
+> is either unnecessary or wrong.  
+> This library brings that to the surface — and provides the correct alternative for the few
+> cases where real collection-level memoization is actually needed.
 
-## Table of Contents
+## Why memotable
 
-- [The Problem](#the-problem)
-- [The Solution](#the-solution)
-- [Quick Start](#quick-start)
-- [Live Demo](#live-demo)
-- [When should you use memotable?](#when-should-you-use-memotable)
-- [When _not_ to use memotable](#when-not-to-use-memotable)
-- [What memotable is _not_](#what-memotable-is-not)
-- [Technical Design](#technical-design)
-- [Core Features](#core-features)
-- [Examples](#examples)
-    - [Vanilla JavaScript](#vanilla-javascript-reactive-tables-for-derived-views)
-    - [React Integration](#react-integration-with-derived-views)
-    - [Batching for Performance](#batching-for-performance)
-- [Benchmarks](#benchmarks)
-- [Ecosystem Integrations](#ecosystem-integrations)
-- [API Reference](#api-reference)
-- [License](#license)
-
-## The Problem
-
-Developers often reach for `useMemo` to cache filtered or sorted collections, but that quickly becomes a readability, correctness or a performance trap.
+Most developers reach for `useMemo` (or the equivalent in their framework)
+to cache filtered or sorted lists — but for collections, that pattern is almost always a trap.
 
 ```tsx
 function TaskList({ tasks, filter, comparator }) {
-    // ❌ Recomputes entire list on *any* change OR risks stale data if reference doesn't change
-    const filtered = useMemo(() => tasks.filter(filter), [tasks, filter]);
-    const sorted = useMemo(() => filtered.sort(comparator), [filtered, comparator]);
-
-    return (
-        <div>
-            {sorted.map((t) => (
-                <Task key={t.id} {...t} />
-            ))}
-        </div>
-    );
+  // ❌ Looks efficient, but isn't.
+  const filtered = useMemo(() => tasks.filter(filter), [tasks, filter]);
+  const sorted = useMemo(() => filtered.sort(comparator), [filtered, comparator]);
+  ...
 }
 ```
 
-**Problems with this approach:**
+This has two fundamental problems:
+- If you mutate the array in place, `useMemo` can silently return **stale data** because the reference didn’t change.
+- If you recreate the array on every render, you pay **full recomputation cost** every time — so your “optimization” does nothing.
+  
+Most of the time, you don’t need to “memoize” collections at all — just recompute them and move on.
+But when you _do_ need to avoid recomputation — say, thousands of items with heavy filter/comparator logic —  
+you need a structure that’s actually designed for that.
 
-- If you mutate the collection in place (keeping the same array reference), `useMemo` can return _stale_ results because its cache key hasn’t changed.
-- If you create a new array reference on every render pass, `useMemo` will recompute on every render — defeating its purpose.
+That’s what `memotable` is.
 
-## The Solution
+It provides:
 
-`memotable` introduces **materialized views**, **incremental updates**, and **subscriptions**:
+- **Incremental updates** — only reprocess changed items.
+- **Recursive indexing** — you can partition, filter, and index views as deeply as needed.
+- **Delta tracking** — access just the changes since last read, useful for syncing.
+
+## Using memotable
 
 ```tsx
 const taskTable = new Table<Task>(); // Structure defined once
@@ -147,7 +137,7 @@ pnpm demo
 
 ## When should you use memotable?
 
-You probably _don't_ need it for simple apps. But it shines in the middle ground between trivial and overengineered:
+You _don't_ need it for simple apps.
 
 ✅ Use it when:
 
@@ -167,7 +157,7 @@ You probably _don't_ need it for simple apps. But it shines in the middle ground
 
 ## What memotable is _not_
 
-It's **not** a full state management system like MobX or Zustand. Instead, it's a **reactive data structure primitive** — designed to integrate _with_ those systems or stand alone for efficient in-memory computation.
+It's **not** a full state management system like MobX or Zustand. Instead, it's a **data structure primitive** — designed to integrate _with_ those systems or stand alone for efficient in-memory computation.
 
 ## Technical Design
 
@@ -178,104 +168,9 @@ Memotable uses **partitioned tables** with **incremental propagation** to achiev
 - **Materialized views**: Filtered and sorted results are cached in memory for instant reads. Materialization can be toggled per partition to balance memory usage vs. read performance.
 - **Subscription model**: Fine-grained listeners at any level (root table, index, or partition) receive updates only when their specific view changes.
 
-This design minimizes redundant computation while keeping the API surface simple: insert, update, delete, applyFilter, applyComparator, and subscribe.
-
-## Core Features
-
-- **Recursive partitioning** – Every index creates partitions (sub-tables), which can themselves be indexed further.
-- **Materialized views** – Filtered, sorted, and materialized (memoized) partitions for fast reads. _(Note: materializing a view caches results for faster reads but increases memory usage; materialization can be enabled/disabled individually for every partition)_
-- **Incremental updates** – Changes propagate only to affected partitions.
-- **Subscriptions** – Fine-grained listeners for any node or partition.
-- **Change tracking** – Built-in `nextDelta()` for persistence and sync.
-- **Batching** – Apply multiple updates with `runBatch()`, triggering a single recalculation cycle.
-
-## Examples
-
-### React integration with derived views
-
-See the [React Todo App example](./examples/react/TodoApp.tsx) for a complete demo that shows:
-
-- **Indexing** – Items distributed across “List 1”, “List 2”, and “Important” views.
-- **Partition-specific sorting** – Each partition can have its own sorting rule.
-- **Reactive updates** – Real-time UI via [`useTable`](./src/integrations/react/useTable.tsx).
-- **View materialization** – Cached filtered results across re-renders.
-
-**Quick preview:**
-
-```tsx
-import { Table } from "memotable";
-import { useTable } from "memotable/react";
-
-const todoTable = new Table<ITask>();
-
-todoTable.registerIndex("View", (todo) => {
-    const partitions = [];
-    if (todo.isImportant) partitions.push("Important");
-    partitions.push(todo.listId);
-    return partitions;
-});
-
-const viewIndex = todoTable.index("View");
-
-todoTable.applyComparator((a, b, path) => {
-    if (path.at(-1) === "Important") {
-        return a.dueDate.getTime() - b.dueDate.getTime();
-    }
-    return a.createdDate.getTime() - b.createdDate.getTime();
-});
-
-function ListView({ table }) {
-    const items = useTable(table);
-    return (
-        <ul>
-            {items.map((item) => (
-                <li key={item.id}>{item.title}</li>
-            ))}
-        </ul>
-    );
-}
-
-function App() {
-    return (
-        <>
-            <ListView table={viewIndex.partition("List 1")} />
-            <ListView table={viewIndex.partition("List 2")} />
-            <ListView table={viewIndex.partition("Important")} />
-        </>
-    );
-}
-```
-
-### Batching for performance
-
-When making multiple updates, use `runBatch()` to trigger a single recalculation:
-
-```ts
-import { Table, runBatch } from "memotable";
-
-const users = new Table<User>();
-users.applyComparator((a, b) => a.name.localeCompare(b.name));
-
-// ❌ Without batching: 3 separate recalculations
-users.insert({ id: 1, name: "Charlie" });
-users.insert({ id: 2, name: "Alice" });
-users.insert({ id: 3, name: "Bob" });
-
-// ✅ With batching: 1 recalculation after all inserts
-runBatch(() => {
-    users.insert({ id: 1, name: "Charlie" });
-    users.insert({ id: 2, name: "Alice" });
-    users.insert({ id: 3, name: "Bob" });
-});
-
-// Result: Subscribers notified once with fully updated state
-```
-
-**Performance impact**: For bulk operations (e.g., syncing 1000 items from a server), batching can reduce recalculation overhead by 10–100x depending on complexity of filters, sorts, and indexes.
-
 ## Benchmarks
 
-Memotable is optimized for **read-heavy workloads**. The tradeoff: slower writes, but dramatically faster reads.
+Memotable is optimized for **read-heavy workloads**. The tradeoff: slower writes, faster reads.
 
 ### Real-world benchmark: 50,000 tasks across 50 lists with R/W ratio of 5
 
@@ -304,9 +199,7 @@ _Run `pnpm benchmark` to test on your machine._
 - Write-heavy workloads — each edit is ~150x slower due to incremental updates
 - One-time operations on small datasets (<1000 items)
 
-**The sweet spot:** Applications with 5,000–50,000 items where you read data 5–10x more often than you write it. Think: dashboards, admin panels, collaborative tools, and real-time monitoring apps.
-
-## Ecosystem Integrations
+## Integrations
 
 Memotable is designed to integrate seamlessly with existing tools:
 
@@ -321,7 +214,7 @@ function MyComponent({ table }) {
 }
 ```
 
-### View / Svelte (WIP)
+### Vue / Svelte (WIP)
 
 _Coming soon_
 
