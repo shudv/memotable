@@ -95,7 +95,6 @@ function generateRandomTitle(): string {
 
 class PlainImplementation {
     private tasks: Map<string, Task> = new Map();
-    private subscriptions: Set<(ids: string[]) => void> = new Set();
 
     set(id: string, task: Task | null): void {
         if (task === null) {
@@ -103,7 +102,6 @@ class PlainImplementation {
         } else {
             this.tasks.set(id, task);
         }
-        this.notify([id]);
     }
 
     getListTasks(listId: string): Task[] {
@@ -124,28 +122,6 @@ class PlainImplementation {
             .filter((t) => t.isImportant && !t.isCompleted)
             .sort((a, b) => b.createdAt - a.createdAt);
     }
-
-    subscribe(callback: (ids: string[]) => void): () => void {
-        this.subscriptions.add(callback);
-        return () => this.subscriptions.delete(callback);
-    }
-
-    private notify(ids: string[]): void {
-        this.subscriptions.forEach((cb) => cb(ids));
-    }
-
-    runBatch(fn: (impl: PlainImplementation) => void): void {
-        const changedIds: string[] = [];
-        const originalNotify = this.notify.bind(this);
-        this.notify = (ids: string[]) => changedIds.push(...ids);
-
-        fn(this);
-
-        this.notify = originalNotify;
-        if (changedIds.length > 0) {
-            originalNotify(changedIds);
-        }
-    }
 }
 
 // ============================================================================
@@ -156,14 +132,7 @@ function setupTableImplementation(materialize: boolean): Table<Task> {
     const table = new Table<Task>({
         name: "Tasks",
         deltaTracking: true,
-        shouldMaterialize: materialize ? () => true : () => false,
-        isEqual: (a, b) =>
-            a.id === b.id &&
-            a.listId === b.listId &&
-            a.isCompleted === b.isCompleted &&
-            a.isImportant === b.isImportant &&
-            a.priority === b.priority &&
-            a.title === b.title,
+        shouldMaterialize: materialize ? (_, isTerminal) => isTerminal : () => false,
     });
 
     // Index by list
@@ -267,7 +236,7 @@ function benchmarkPlain(tasks: Task[], config: BenchmarkConfig): BenchmarkResult
     const readEnd = performance.now();
 
     return {
-        scenario: "Vanilla",
+        scenario: "vanilla",
         editTimeMs: editEnd - editStart,
         readTimeMs: readEnd - readStart,
         numEdits: config.numEdits,
@@ -319,7 +288,7 @@ function benchmarkTable(
     const readEnd = performance.now();
 
     return {
-        scenario: materialize ? "Table" : "Table (no cache)",
+        scenario: materialize ? "memotable" : "memotable (no cache)",
         editTimeMs: editEnd - editStart,
         readTimeMs: readEnd - readStart,
         numEdits: config.numEdits,
@@ -352,7 +321,7 @@ describe("Table - Performance Benchmarks", () => {
         tasks = generateTasks(config);
     });
 
-    test("Vanilla", () => {
+    test("vainlla", () => {
         vanillaResult = benchmarkPlain([...tasks], config);
 
         console.log(
@@ -362,7 +331,7 @@ describe("Table - Performance Benchmarks", () => {
         expect(vanillaResult.readTimeMs).toBeGreaterThan(0);
     });
 
-    test("Table", () => {
+    test("memotable", () => {
         tableResult = benchmarkTable([...tasks], config, true);
 
         console.log(
@@ -390,11 +359,11 @@ describe("Table - Performance Benchmarks", () => {
         const tableTotal = tableResult.editTimeMs + tableResult.readTimeMs;
 
         // Display results
-        console.log("Scenario          Edit            Read            Total");
+        console.log("Scenario          Edit              Read              Total");
         console.log("-".repeat(70));
         console.log(
             [
-                "Vanilla",
+                "vanilla",
                 `${vanillaResult.editTimeMs.toFixed(1)}ms`,
                 `${vanillaResult.readTimeMs.toFixed(1)}ms`,
                 `${vanillaTotal.toFixed(1)}ms`,
@@ -404,7 +373,7 @@ describe("Table - Performance Benchmarks", () => {
         );
         console.log(
             [
-                "Table",
+                "memotable",
                 `${tableResult.editTimeMs.toFixed(1)}ms`,
                 `${tableResult.readTimeMs.toFixed(1)}ms`,
                 `${tableTotal.toFixed(1)}ms`,
