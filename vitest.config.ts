@@ -6,7 +6,7 @@ export default defineConfig({
         globals: true,
 
         // Test environment (node for library, jsdom for browser code)
-        environment: "node",
+        environment: "jsdom",
 
         // Coverage configuration
         coverage: {

@@ -3,16 +3,22 @@
     "version": "1.0.2",
     "description": "Reactive, memoized in-memory tables for structured data — derived, sorted, and filtered views that update incrementally.",
     "type": "module",
-    "main": "./dist/index.cjs",
-    "module": "./dist/index.js",
-    "types": "./dist/index.d.ts",
     "sideEffects": false,
     "exports": {
         ".": {
+            "types": "./dist/index.d.ts",
             "import": "./dist/index.js",
             "require": "./dist/index.cjs"
+        },
+        "./react": {
+            "types": "./dist/integrations/React.d.ts",
+            "import": "./dist/integrations/React.js",
+            "require": "./dist/integrations/React.cjs"
         }
     },
+    "types": "./dist/index.d.ts",
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
     "files": [
         "dist",
         "README.md",
@@ -58,26 +64,28 @@
         "@changesets/cli": "^2.27.9",
         "@eslint/js": "^9.38.0",
         "@size-limit/preset-small-lib": "^11.2.0",
+        "@testing-library/react": "^14.0.0",
         "@types/react": "^18.3.12",
         "@types/react-dom": "^18.3.1",
         "@typescript-eslint/eslint-plugin": "^8.46.2",
         "@typescript-eslint/parser": "^8.46.2",
         "@vitejs/plugin-react": "^4.3.3",
-        "@vitest/coverage-v8": "4.0.3",
         "esbuild": "^0.25.11",
         "eslint": "^9.38.0",
         "eslint-config-prettier": "^10.1.8",
         "husky": "^9.1.7",
         "lint-staged": "^16.2.6",
         "prettier": "^3.6.2",
-        "react": "^18.3.1",
+        "react": "^18.0.0",
         "react-dom": "^18.3.1",
         "size-limit": "^11.2.0",
         "tsup": "^8.5.0",
         "typescript": "^5.9.3",
         "typescript-eslint": "^8.46.2",
         "vite": "^5.4.11",
-        "vitest": "^4.0.3"
+        "vitest": "^4.0.4",
+        "jsdom": "^24.0.0",
+        "@vitest/coverage-v8": "^4.0.4"
     },
     "lint-staged": {
         "*.{ts,tsx}": [
@@ -98,5 +106,13 @@
             "limit": "2 kB"
         }
     ],
-    "packageManager": "pnpm@10.19.0"
+    "packageManager": "pnpm@10.20.0",
+    "peerDependencies": {
+        "react": "^16.8.0 || ^17.0.0 || ^18.0.0"
+    },
+    "peerDependenciesMeta": {
+        "react": {
+            "optional": true
+        }
+    }
 }

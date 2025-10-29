@@ -1,6 +1,6 @@
 import React from "react";
 import { Table } from "../../src/Table";
-import { useTable } from "./useTable";
+import { useTable } from "./../../src/integrations/React";
 import { IReadOnlyTable } from "../../src/contracts/IReadOnlyTable";
 import { styles } from "./styles";
 
