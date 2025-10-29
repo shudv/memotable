@@ -5,7 +5,7 @@
 [![CI](https://github.com/shudv/memotable/actions/workflows/ci.yml/badge.svg)](https://github.com/shudv/memotable/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Zero dependencies.** Reactive, indexed and memoized in-memory tables and views — all in about **2 KB**.
+**Zero dependencies.** Reactive, indexed and memoized in-memory tables and views — all in **~1.9 KB**.
 
 ## The Problem
 
