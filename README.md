@@ -275,20 +275,36 @@ runBatch(() => {
 
 ## Benchmarks
 
-Memotable is designed for datasets in the **hundreds to tens of thousands** of items where incremental updates outperform full recomputation.
+Memotable is optimized for **read-heavy workloads**. The tradeoff: slower writes, but dramatically faster reads.
 
-**Example scenario:** 10,000 items with 3 indexes, 2 filters, and 1 sort comparator.
+### Real-world benchmark: 50,000 tasks across 50 lists with R/W ratio of 5
 
-| Operation                           | memotable (incremental) | Plain JS (full recompute) |
-| ----------------------------------- | ----------------------- | ------------------------- |
-| Insert 1 item                       | ~0.05ms                 | ~8ms                      |
-| Update 1 item (no partition change) | ~0.03ms                 | ~8ms                      |
-| Delete 1 item                       | ~0.04ms                 | ~8ms                      |
-| Batch insert 100 items              | ~2ms                    | ~8ms                      |
+Scenario: 50,000 tasks with list-based indexing, importance filtering, and two-factor sorting (importance + timestamp). Simulates a typical task management app with 500 reads and 100 writes.
 
-_Benchmarks run on M1 MacBook Pro. Your mileage may vary. Run `pnpm benchmark` to test on your machine._
+| Operation    | memotable   | Plain JS    | Difference       |
+| ------------ | ----------- | ----------- | ---------------- |
+| Initial load | 89.6ms      | 5.3ms       | 16.9x slower     |
+| 100 edits    | 16.3ms      | 0.1ms       | 153.3x slower    |
+| 500 reads    | 8.5ms       | 306.1ms     | **36.2x faster** |
+| **Total**    | **114.4ms** | **311.6ms** | **2.7x faster**  |
 
-**Key takeaway**: Memotable shines when you have frequent small updates to medium-large datasets. For one-time bulk operations on small datasets, plain JavaScript is often faster due to lower overhead.
+_Run `pnpm benchmark` to test on your machine._
+
+### Key insights
+
+**When memotable wins:**
+
+- Read-heavy workloads (read/write ratio > 5:1) — reads are 30–40x faster
+- Frequent queries against the same filtered/sorted views
+- Real-time UIs that re-render on every data change
+
+**When plain JS wins:**
+
+- Initial bulk loading — memotable is ~17x slower due to indexing overhead
+- Write-heavy workloads — each edit is ~150x slower due to incremental updates
+- One-time operations on small datasets (<1000 items)
+
+**The sweet spot:** Applications with 5,000–50,000 items where you read data 5–10x more often than you write it. Think: dashboards, admin panels, collaborative tools, and real-time monitoring apps.
 
 ## Ecosystem Integrations
 
@@ -305,18 +321,9 @@ function MyComponent({ table }) {
 }
 ```
 
-### IndexedDB / LocalStorage
+### View / Svelte (WIP)
 
-Use `nextDelta()` for efficient persistence:
-
-```ts
-const delta = table.nextDelta();
-if (delta) {
-    await db.put("deltas", { timestamp: Date.now(), changes: delta });
-}
-```
-
-This captures only **changed items** since the last call, making it ideal for incremental sync patterns.
+_Coming soon_
 
 ## License
 
