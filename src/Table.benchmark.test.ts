@@ -45,7 +45,7 @@ interface BenchmarkResult {
 
 // Default configuration
 const LoadFactor = 1;
-const ReadWriteRatio = 5;
+const ReadWriteRatio = 5; // Must be greater than 1 to simulate read-heavy workloads
 const DEFAULT_CONFIG: BenchmarkConfig = {
     numLists: 50 * LoadFactor,
     tasksPerList: 1000 * LoadFactor,
@@ -277,8 +277,6 @@ function benchmarkMemoTable(tasks: Task[], config: BenchmarkConfig): BenchmarkRe
 describe("Table - Performance Benchmarks", () => {
     let config: BenchmarkConfig;
     let tasks: Task[];
-    let vanillaResult: BenchmarkResult;
-    let tableResult: BenchmarkResult;
 
     beforeAll(() => {
         config = DEFAULT_CONFIG;
@@ -294,34 +292,33 @@ describe("Table - Performance Benchmarks", () => {
         tasks = generateTasks(config);
     });
 
-    test("vanilla", () => {
-        vanillaResult = benchmarkVanilla([...tasks], config);
+    test("memotable vs vanilla performance comparison", () => {
+        const vanillaResult = benchmarkVanilla([...tasks], config);
+        const tableResult = benchmarkMemoTable([...tasks], config);
 
-        console.log(
-            `✓ ${vanillaResult.scenario}: Load ${vanillaResult.loadTimeMs.toFixed(1)}ms, Edit ${vanillaResult.editTimeMs.toFixed(1)}ms, Read ${vanillaResult.readTimeMs.toFixed(1)}ms`,
-        );
+        // Basic sanity checks
         expect(vanillaResult.loadTimeMs).toBeGreaterThan(0);
         expect(vanillaResult.editTimeMs).toBeGreaterThan(0);
         expect(vanillaResult.readTimeMs).toBeGreaterThan(0);
-    }, 120000); // 120 second timeout
-
-    test("memotable", () => {
-        tableResult = benchmarkMemoTable([...tasks], config);
-
-        console.log(
-            `✓ ${tableResult.scenario}: Load ${tableResult.loadTimeMs.toFixed(1)}ms, Edit ${tableResult.editTimeMs.toFixed(1)}ms, Read ${tableResult.readTimeMs.toFixed(1)}ms\n`,
-        );
         expect(tableResult.loadTimeMs).toBeGreaterThan(0);
         expect(tableResult.editTimeMs).toBeGreaterThan(0);
         expect(tableResult.readTimeMs).toBeGreaterThan(0);
-    }, 120000); // 120 second timeout
 
-    afterAll(() => {
-        if (!vanillaResult || !tableResult) return;
+        // Performance assertions
+        const readSpeedup = vanillaResult.readTimeMs / tableResult.readTimeMs;
+        const vanillaTotal =
+            vanillaResult.loadTimeMs + vanillaResult.editTimeMs + vanillaResult.readTimeMs;
+        const tableTotal = tableResult.loadTimeMs + tableResult.editTimeMs + tableResult.readTimeMs;
+        const totalSpeedup = vanillaTotal / tableTotal;
 
+        // memotable reads should be faster than vanilla
+        expect(tableResult.readTimeMs).toBeLessThan(vanillaResult.readTimeMs);
+
+        // memotable overall should be faster than vanilla (for read-heavy workloads)
+        expect(tableTotal).toBeLessThan(vanillaTotal);
+
+        // Display comparison table
         const numTasksLoaded = config.numLists * config.tasksPerList;
-
-        // Configuration for table formatting
         const COL_WIDTH = 20;
         const TABLE_WIDTH = COL_WIDTH * 5;
 
@@ -331,10 +328,6 @@ describe("Table - Performance Benchmarks", () => {
 
         const vanillaEditPerOp = vanillaResult.editTimeMs / vanillaResult.numEdits;
         const tableEditPerOp = tableResult.editTimeMs / tableResult.numEdits;
-
-        const vanillaTotal =
-            vanillaResult.loadTimeMs + vanillaResult.editTimeMs + vanillaResult.readTimeMs;
-        const tableTotal = tableResult.loadTimeMs + tableResult.editTimeMs + tableResult.readTimeMs;
 
         // Display results with dynamic column widths
         console.log(
@@ -377,9 +370,7 @@ describe("Table - Performance Benchmarks", () => {
         // Key insights
         const ERROR_MARGIN = 0.1; // 10% margin for "similar" performance
         const loadSlowdown = tableResult.loadTimeMs / vanillaResult.loadTimeMs;
-        const readSpeedup = vanillaResult.readTimeMs / tableResult.readTimeMs;
         const editSlowdown = tableEditPerOp / vanillaEditPerOp;
-        const totalSpeedup = vanillaTotal / tableTotal;
         const readWriteRatio = config.numReads / config.numEdits;
 
         console.log("\n💡 Key Insights:");
