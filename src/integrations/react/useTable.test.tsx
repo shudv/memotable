@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { renderHook, act } from "@testing-library/react";
-import { Table } from "../Table";
-import { useTable } from "./React";
+import { Table } from "../../Table";
+import { useTable } from "./useTable";
 
 interface Task {
     id: string;
@@ -16,68 +16,59 @@ describe("useTable", () => {
         table = new Table<Task>();
     });
 
-    test("returns items from table", () => {
-        table.set("task-1", { id: "task-1", title: "Test", completed: false });
-
-        const { result } = renderHook(() => useTable(table));
-
-        expect(result.current).toHaveLength(1);
-        expect(result.current[0]).toEqual({ id: "task-1", title: "Test", completed: false });
-    });
-
-    test("triggers re-render when table changes", () => {
-        const { result } = renderHook(() => useTable(table));
-
-        expect(result.current).toHaveLength(0);
-
-        act(() => {
-            table.set("task-1", { id: "task-1", title: "Test", completed: false });
-        });
-
-        expect(result.current).toHaveLength(1);
-    });
-
     test("triggers re-render on item update", () => {
+        let renderCount = 0;
+
         table.set("task-1", { id: "task-1", title: "Original", completed: false });
 
-        const { result } = renderHook(() => useTable(table));
+        renderHook(() => {
+            renderCount++;
+            useTable(table);
+        });
 
-        expect(result.current[0]?.title).toBe("Original");
+        const initialCount = renderCount;
 
         act(() => {
             table.set("task-1", { id: "task-1", title: "Updated", completed: false });
         });
 
-        expect(result.current[0]?.title).toBe("Updated");
+        expect(renderCount).toBe(initialCount + 1);
     });
 
     test("triggers re-render on item deletion", () => {
+        let renderCount = 0;
+
         table.set("task-1", { id: "task-1", title: "Test", completed: false });
 
-        const { result } = renderHook(() => useTable(table));
+        renderHook(() => {
+            renderCount++;
+            useTable(table);
+        });
 
-        expect(result.current).toHaveLength(1);
+        const initialCount = renderCount;
 
         act(() => {
             table.set("task-1", null);
         });
 
-        expect(result.current).toHaveLength(0);
+        expect(renderCount).toBe(initialCount + 1);
     });
 
     test("does not trigger re-render after unmount", () => {
-        const { result, unmount } = renderHook(() => useTable(table));
+        let renderCount = 0;
 
-        const itemsBeforeUnmount = result.current;
+        const { unmount } = renderHook(() => {
+            renderCount++;
+            useTable(table);
+        });
+
+        const countBeforeUnmount = renderCount;
 
         unmount();
 
-        act(() => {
-            table.set("task-1", { id: "task-1", title: "Test", completed: false });
-        });
+        table.set("task-1", { id: "task-1", title: "Test", completed: false });
 
-        // Items should remain the same since component unmounted
-        expect(itemsBeforeUnmount).toHaveLength(0);
+        expect(renderCount).toBe(countBeforeUnmount);
     });
 
     test("batch updates trigger single re-render", () => {
@@ -85,7 +76,7 @@ describe("useTable", () => {
 
         renderHook(() => {
             renderCount++;
-            return useTable(table);
+            useTable(table);
         });
 
         const initialCount = renderCount;
@@ -98,16 +89,15 @@ describe("useTable", () => {
             });
         });
 
-        // Should only trigger one additional render for the batch
         expect(renderCount).toBe(initialCount + 1);
     });
 
-    test("should trigger on applying filter or comparator", () => {
+    test("triggers re-render on applying filter or comparator", () => {
         let renderCount = 0;
 
         renderHook(() => {
             renderCount++;
-            return useTable(table);
+            useTable(table);
         });
 
         const initialCount = renderCount;

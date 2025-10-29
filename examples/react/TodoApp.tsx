@@ -1,6 +1,6 @@
 import React from "react";
 import { Table } from "../../src/Table";
-import { useTable } from "./../../src/integrations/React";
+import { useTable } from "../../src/integrations/react";
 import { IReadOnlyTable } from "../../src/contracts/IReadOnlyTable";
 import { styles } from "./styles";
 
@@ -40,13 +40,13 @@ todoTable.applyComparator((a, b, path) => {
 
 // ListView component
 function ListView({ title, table }: { title: string; table: IReadOnlyTable<Todo> }) {
-    const items = useTable(table);
+    useTable(table);
 
     return (
         <div style={styles.listView}>
             <h3 style={styles.listViewTitle}>{title}</h3>
             <ul style={styles.listViewList}>
-                {items.map((todo) => (
+                {table.items().map((todo) => (
                     <li key={todo.id} style={styles.listViewItem}>
                         <div style={styles.listViewItemTitle}>{todo.title}</div>
                         <div style={styles.listViewItemMeta}>
@@ -57,7 +57,7 @@ function ListView({ title, table }: { title: string; table: IReadOnlyTable<Todo>
                     </li>
                 ))}
             </ul>
-            <div style={styles.listViewCount}>Total: {items.length} items</div>
+            <div style={styles.listViewCount}>Total: {table.items().length} items</div>
         </div>
     );
 }

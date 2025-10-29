@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 
 // Table contract
-import type { IReadOnlyTable } from "../../src/contracts/IReadOnlyTable";
+import type { IReadOnlyTable } from "../../contracts/IReadOnlyTable";
 
 /**
  * React hook that subscribes to table changes and triggers re-renders.
@@ -26,16 +26,7 @@ import type { IReadOnlyTable } from "../../src/contracts/IReadOnlyTable";
  * };
  * ```
  */
-export function useTable<T>(table: IReadOnlyTable<T>): T[] {
-    const [items, setItems] = useState(table.items());
-
-    useEffect(
-        () =>
-            table.subscribe(() => {
-                setItems(table.items());
-            }),
-        [table.subscribe],
-    );
-
-    return items;
+export function useTable<T>(table: IReadOnlyTable<T>) {
+    const [, setRenderKey] = useState(0);
+    useEffect(() => table.subscribe(() => setRenderKey((key) => key + 1)));
 }
