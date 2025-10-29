@@ -1,5 +1,11 @@
 # memotable
 
+## 1.1.1
+
+### Patch Changes
+
+- 8d831a4: Reduce bundle size and increase compatibility
+
 ## 1.1.0
 
 ### Minor Changes
