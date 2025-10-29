@@ -1,5 +1,11 @@
 # memotable
 
+## 1.1.2
+
+### Patch Changes
+
+- 4911bce: Fix useTable export
+
 ## 1.1.1
 
 ### Patch Changes
