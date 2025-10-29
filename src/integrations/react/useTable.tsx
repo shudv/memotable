@@ -6,19 +6,16 @@ import type { IReadOnlyTable } from "../../contracts/IReadOnlyTable";
 
 /**
  * React hook that subscribes to table changes and triggers re-renders.
- *
- * @template T Type of items in the table
  * @param table The table instance to subscribe to
- * @returns Array of items from the table
  *
  * @example
  * ```tsx
  * const MyComponent = (table) => {
- *   const items = useTable(table);
+ *   useTable(table);
  *
  *   return (
  *     <ul>
- *       {items.map(item => (
+ *       {table.items().map(item => (
  *         <li key={item.id}>{item.name}</li>
  *       ))}
  *     </ul>
