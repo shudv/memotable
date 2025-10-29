@@ -27,7 +27,7 @@
     "scripts": {
         "dev": "tsup src/index.ts --watch",
         "demo": "vite examples/react",
-        "build": "tsup src/index.ts --dts --format esm,cjs",
+        "build": "tsup src/index.ts --format cjs,esm --dts --minify --clean",
         "test": "vitest run --coverage",
         "test:watch": "vitest",
         "lint": "eslint .",
