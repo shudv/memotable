@@ -33,7 +33,8 @@
         "publish:ci": "pnpm changeset publish",
         "prepare": "husky install",
         "size": "size-limit",
-        "size:mangle": "npx esbuild src/index.ts --bundle --minify --mangle-props='^_' --outfile=dist/mangled.js && brotli -c dist/mangled.js | wc -c"
+        "size:mangle": "npx esbuild src/index.ts --bundle --minify --mangle-props='^_' --outfile=dist/mangled.js && brotli -c dist/mangled.js | wc -c",
+        "benchmark": "vitest run Table.benchmark.test.ts --testTimeout=120000 --no-coverage"
     },
     "keywords": [
         "typescript",

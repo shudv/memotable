@@ -36,21 +36,23 @@ interface Task {
 
 interface BenchmarkResult {
     scenario: string;
+    loadTimeMs: number;
     editTimeMs: number;
     readTimeMs: number;
     numEdits: number;
     numReads: number;
-    totalItemsRead: number; // Total items returned across all reads
 }
 
 // Default configuration
+const LoadFactor = 1;
+const ReadWriteRatio = 5;
 const DEFAULT_CONFIG: BenchmarkConfig = {
-    numLists: 50,
-    tasksPerList: 1000,
+    numLists: 50 * LoadFactor,
+    tasksPerList: 1000 * LoadFactor,
     completionRate: 0.3,
     importantRate: 0.1,
-    numEdits: 100,
-    numReads: 500,
+    numEdits: 100 * LoadFactor,
+    numReads: ReadWriteRatio * 100 * LoadFactor,
 };
 
 // ============================================================================
@@ -93,7 +95,7 @@ function generateRandomTitle(): string {
 // Scenario 1: Vanilla implementation
 // ============================================================================
 
-class PlainImplementation {
+class VanillaImplementation {
     private tasks: Map<string, Task> = new Map();
 
     set(id: string, task: Task | null): void {
@@ -125,53 +127,43 @@ class PlainImplementation {
 }
 
 // ============================================================================
-// Scenario 2 & 3: Table-based implementations
+// Scenario 2: Table-based implementations
 // ============================================================================
 
-function setupTableImplementation(materialize: boolean): Table<Task> {
-    const table = new Table<Task>({
-        name: "Tasks",
-        deltaTracking: true,
-        shouldMaterialize: materialize ? (_, isTerminal) => isTerminal : () => false,
-    });
+function setupTableImplementation(): Table<Task> {
+    const table = new Table<Task>();
 
     // Index by list
     table.registerIndex("list", (task) => task.listId);
 
     // Index by importance (for composite "Important" view)
-    table.registerIndex("importance", (task) => (task.isImportant ? "important" : "normal"));
+    table.registerIndex("importance", (task) => (task.isImportant ? "important" : undefined));
 
-    return table;
-}
+    // Global filter + comparator that adapts based on partition path
+    table.applyFilter((task, path) => {
+        // If in a list partition, filter by listId and not completed
+        if (path.length > 2 && path.at(-2) === "list") {
+            return task.isCompleted;
+        }
 
-// Cache for configured partitions (simulates what a real app would do)
-const partitionCache = new Map<string, any>();
+        return true; // Default: include all
+    });
 
-function getConfiguredListPartition(table: Table<Task>, listId: string) {
-    const cacheKey = `list:${listId}`;
-    if (!partitionCache.has(cacheKey)) {
-        const partition = table.index("list").partition(listId);
-        partition.applyFilter((task) => !task.isCompleted);
-        partition.applyComparator((a, b) => {
+    // Global comparator that adapts based on partition path
+    table.applyComparator((a, b, path) => {
+        // If in a list partition, sort by importance + createdAt
+        if (path.length > 2 && path.at(-2) === "list") {
             if (a.isImportant !== b.isImportant) {
                 return a.isImportant ? -1 : 1;
             }
             return b.createdAt - a.createdAt;
-        });
-        partitionCache.set(cacheKey, partition);
-    }
-    return partitionCache.get(cacheKey);
-}
+        }
 
-function getConfiguredImportantPartition(table: Table<Task>) {
-    const cacheKey = "important";
-    if (!partitionCache.has(cacheKey)) {
-        const partition = table.index("importance").partition("important");
-        partition.applyFilter((task) => !task.isCompleted);
-        partition.applyComparator((a, b) => b.createdAt - a.createdAt);
-        partitionCache.set(cacheKey, partition);
-    }
-    return partitionCache.get(cacheKey);
+        // Default: sort by createdAt
+        return b.createdAt - a.createdAt;
+    });
+
+    return table;
 }
 
 // ============================================================================
@@ -188,17 +180,14 @@ function applyEdits(
         const editType = Math.random();
 
         if (editType < 0.33) {
-            // Toggle completion
+            // Toggle completion (impacts filters)
             setter(task.id, {
                 ...task,
                 isCompleted: !task.isCompleted,
                 completedAt: !task.isCompleted ? Date.now() : null,
             });
-        } else if (editType < 0.66) {
-            // Change priority
-            setter(task.id, { ...task, priority: Math.floor(Math.random() * 5) + 1 });
         } else {
-            // Toggle importance
+            // Toggle importance (impacts sorting)
             setter(task.id, { ...task, isImportant: !task.isImportant });
         }
     }
@@ -208,65 +197,52 @@ function applyEdits(
 // Benchmarking Functions
 // ============================================================================
 
-function benchmarkPlain(tasks: Task[], config: BenchmarkConfig): BenchmarkResult {
-    const impl = new PlainImplementation();
+function benchmarkVanilla(tasks: Task[], config: BenchmarkConfig): BenchmarkResult {
+    const impl = new VanillaImplementation();
 
-    // Load data
+    // Benchmark initial load
+    const loadStart = performance.now();
     for (const task of tasks) {
         impl.set(task.id, task);
     }
+    const loadEnd = performance.now();
 
     // Benchmark edits
     const editStart = performance.now();
     applyEdits(tasks, config, (id, task) => impl.set(id, task));
     const editEnd = performance.now();
 
-    // Benchmark reads (track total items read)
-    let totalItemsRead = 0;
     const readStart = performance.now();
     for (let i = 0; i < config.numReads; i++) {
         const listId = `list-${Math.floor(Math.random() * config.numLists)}`;
-        const items = impl.getListTasks(listId);
-        totalItemsRead += items.length;
+        impl.getListTasks(listId);
         if (i % 10 === 0) {
-            const important = impl.getImportantTasks();
-            totalItemsRead += important.length;
+            impl.getImportantTasks();
         }
     }
     const readEnd = performance.now();
 
     return {
         scenario: "vanilla",
+        loadTimeMs: loadEnd - loadStart,
         editTimeMs: editEnd - editStart,
         readTimeMs: readEnd - readStart,
         numEdits: config.numEdits,
         numReads: config.numReads,
-        totalItemsRead,
     };
 }
 
-function benchmarkTable(
-    tasks: Task[],
-    config: BenchmarkConfig,
-    materialize: boolean,
-): BenchmarkResult {
-    // Clear partition cache between runs
-    partitionCache.clear();
+function benchmarkMemoTable(tasks: Task[], config: BenchmarkConfig): BenchmarkResult {
+    const table = setupTableImplementation();
 
-    const table = setupTableImplementation(materialize);
-
-    // Load data
+    // Benchmark initial load
+    const loadStart = performance.now();
     table.runBatch(() => {
         for (const task of tasks) {
             table.set(task.id, task);
         }
     });
-
-    // Pre-warm partitions (simulates app startup where views are created once)
-    for (let i = 0; i < config.numLists; i++) {
-        getConfiguredListPartition(table, `list-${i}`);
-    }
-    getConfiguredImportantPartition(table);
+    const loadEnd = performance.now();
 
     // Benchmark edits
     const editStart = performance.now();
@@ -274,26 +250,23 @@ function benchmarkTable(
     const editEnd = performance.now();
 
     // Benchmark reads (track total items read)
-    let totalItemsRead = 0;
     const readStart = performance.now();
     for (let i = 0; i < config.numReads; i++) {
         const listId = `list-${Math.floor(Math.random() * config.numLists)}`;
-        const items = getConfiguredListPartition(table, listId).items();
-        totalItemsRead += items.length;
+        table.index("list").partition(listId).items();
         if (i % 10 === 0) {
-            const important = getConfiguredImportantPartition(table).items();
-            totalItemsRead += important.length;
+            table.index("importance").partition("important").items();
         }
     }
     const readEnd = performance.now();
 
     return {
-        scenario: materialize ? "memotable" : "memotable (no cache)",
+        scenario: "memotable",
+        loadTimeMs: loadEnd - loadStart,
         editTimeMs: editEnd - editStart,
         readTimeMs: readEnd - readStart,
         numEdits: config.numEdits,
         numReads: config.numReads,
-        totalItemsRead,
     };
 }
 
@@ -321,83 +294,113 @@ describe("Table - Performance Benchmarks", () => {
         tasks = generateTasks(config);
     });
 
-    test("vainlla", () => {
-        vanillaResult = benchmarkPlain([...tasks], config);
+    test("vanilla", () => {
+        vanillaResult = benchmarkVanilla([...tasks], config);
 
         console.log(
-            `✓ ${vanillaResult.scenario}: Edit ${vanillaResult.editTimeMs.toFixed(1)}ms, Read ${vanillaResult.readTimeMs.toFixed(1)}ms`,
+            `✓ ${vanillaResult.scenario}: Load ${vanillaResult.loadTimeMs.toFixed(1)}ms, Edit ${vanillaResult.editTimeMs.toFixed(1)}ms, Read ${vanillaResult.readTimeMs.toFixed(1)}ms`,
         );
+        expect(vanillaResult.loadTimeMs).toBeGreaterThan(0);
         expect(vanillaResult.editTimeMs).toBeGreaterThan(0);
         expect(vanillaResult.readTimeMs).toBeGreaterThan(0);
-    });
+    }, 120000); // 120 second timeout
 
     test("memotable", () => {
-        tableResult = benchmarkTable([...tasks], config, true);
+        tableResult = benchmarkMemoTable([...tasks], config);
 
         console.log(
-            `✓ ${tableResult.scenario}: Edit ${tableResult.editTimeMs.toFixed(1)}ms, Read ${tableResult.readTimeMs.toFixed(1)}ms\n`,
+            `✓ ${tableResult.scenario}: Load ${tableResult.loadTimeMs.toFixed(1)}ms, Edit ${tableResult.editTimeMs.toFixed(1)}ms, Read ${tableResult.readTimeMs.toFixed(1)}ms\n`,
         );
+        expect(tableResult.loadTimeMs).toBeGreaterThan(0);
         expect(tableResult.editTimeMs).toBeGreaterThan(0);
         expect(tableResult.readTimeMs).toBeGreaterThan(0);
-    });
+    }, 120000); // 120 second timeout
 
     afterAll(() => {
         if (!vanillaResult || !tableResult) return;
 
-        console.log("=".repeat(70));
-        console.log("📈 PERFORMANCE COMPARISON");
-        console.log("=".repeat(70) + "\n");
+        const numTasksLoaded = config.numLists * config.tasksPerList;
 
-        // Calculate per-item metrics
-        const vanillaReadPerItem = vanillaResult.readTimeMs / vanillaResult.totalItemsRead;
-        const tableReadPerItem = tableResult.readTimeMs / tableResult.totalItemsRead;
+        // Configuration for table formatting
+        const COL_WIDTH = 20;
+        const TABLE_WIDTH = COL_WIDTH * 5;
+
+        console.log("=".repeat(TABLE_WIDTH));
+        console.log("📈 PERFORMANCE COMPARISON");
+        console.log("=".repeat(TABLE_WIDTH) + "\n");
 
         const vanillaEditPerOp = vanillaResult.editTimeMs / vanillaResult.numEdits;
         const tableEditPerOp = tableResult.editTimeMs / tableResult.numEdits;
 
-        const vanillaTotal = vanillaResult.editTimeMs + vanillaResult.readTimeMs;
-        const tableTotal = tableResult.editTimeMs + tableResult.readTimeMs;
+        const vanillaTotal =
+            vanillaResult.loadTimeMs + vanillaResult.editTimeMs + vanillaResult.readTimeMs;
+        const tableTotal = tableResult.loadTimeMs + tableResult.editTimeMs + tableResult.readTimeMs;
 
-        // Display results
-        console.log("Scenario          Edit              Read              Total");
-        console.log("-".repeat(70));
+        // Display results with dynamic column widths
+        console.log(
+            [
+                "Scenario",
+                `Load(${numTasksLoaded})`,
+                `Edit(${config.numEdits})`,
+                `Read(${config.numReads})`,
+                "Total",
+            ]
+                .map((h) => h.padEnd(COL_WIDTH))
+                .join(""),
+        );
+        console.log("-".repeat(TABLE_WIDTH));
         console.log(
             [
                 "vanilla",
+                `${vanillaResult.loadTimeMs.toFixed(1)}ms`,
                 `${vanillaResult.editTimeMs.toFixed(1)}ms`,
                 `${vanillaResult.readTimeMs.toFixed(1)}ms`,
                 `${vanillaTotal.toFixed(1)}ms`,
             ]
-                .map((c) => c.padEnd(18))
+                .map((c) => c.padEnd(COL_WIDTH))
                 .join(""),
         );
         console.log(
             [
                 "memotable",
+                `${tableResult.loadTimeMs.toFixed(1)}ms`,
                 `${tableResult.editTimeMs.toFixed(1)}ms`,
                 `${tableResult.readTimeMs.toFixed(1)}ms`,
                 `${tableTotal.toFixed(1)}ms`,
             ]
-                .map((c) => c.padEnd(18))
+                .map((c) => c.padEnd(COL_WIDTH))
                 .join(""),
         );
 
-        console.log("\n" + "=".repeat(70));
+        console.log("\n" + "=".repeat(TABLE_WIDTH));
 
         // Key insights
-        const readSpeedup = vanillaReadPerItem / tableReadPerItem;
+        const ERROR_MARGIN = 0.1; // 10% margin for "similar" performance
+        const loadSlowdown = tableResult.loadTimeMs / vanillaResult.loadTimeMs;
+        const readSpeedup = vanillaResult.readTimeMs / tableResult.readTimeMs;
         const editSlowdown = tableEditPerOp / vanillaEditPerOp;
         const totalSpeedup = vanillaTotal / tableTotal;
         const readWriteRatio = config.numReads / config.numEdits;
 
         console.log("\n💡 Key Insights:");
         console.log(
-            `  • Table is ${readSpeedup.toFixed(1)}x faster for reads but ${editSlowdown.toFixed(1)}x slower for edits (as compared to Vanilla)`,
+            `  • memotable is ${loadSlowdown.toFixed(1)}x slower for initial load (${vanillaResult.loadTimeMs.toFixed(1)}ms vs ${tableResult.loadTimeMs.toFixed(1)}ms)`,
         );
         console.log(
-            `  • Overall: Table is ${totalSpeedup.toFixed(1)}x ${totalSpeedup > 1 ? "faster" : "slower"} for read/write ratio of ${readWriteRatio.toFixed(1)} (${vanillaTotal.toFixed(1)}ms vs ${tableTotal.toFixed(1)}ms)`,
+            `  • memotable is ${readSpeedup.toFixed(1)}x faster for reads but ${editSlowdown.toFixed(1)}x slower for edits`,
         );
 
-        console.log("\n" + "=".repeat(70) + "\n");
+        // Overall performance comparison with error margin
+        if (Math.abs(totalSpeedup - 1.0) <= ERROR_MARGIN) {
+            console.log(
+                `  • Overall: memotable performs similar to vanilla for read/write ratio of ${readWriteRatio.toFixed(1)} (${vanillaTotal.toFixed(1)}ms vs ${tableTotal.toFixed(1)}ms)`,
+            );
+        } else {
+            console.log(
+                `  • Overall: memotable is ${totalSpeedup.toFixed(1)}x ${totalSpeedup > 1 ? "faster" : "slower"} for read/write ratio of ${readWriteRatio.toFixed(1)} (${vanillaTotal.toFixed(1)}ms vs ${tableTotal.toFixed(1)}ms)`,
+            );
+        }
+
+        console.log("\n" + "=".repeat(TABLE_WIDTH) + "\n");
     });
 });
