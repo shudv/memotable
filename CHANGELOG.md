@@ -1,5 +1,11 @@
 # memotable
 
+## 1.1.0
+
+### Minor Changes
+
+- cd71871: Add useTable hook for easy react integration
+
 ## 1.0.2
 
 ### Patch Changes
