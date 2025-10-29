@@ -1,4 +1,7 @@
+// React
 import { useEffect, useState } from "react";
+
+// Table contract
 import type { IReadOnlyTable } from "../../src/contracts/IReadOnlyTable";
 
 /**
