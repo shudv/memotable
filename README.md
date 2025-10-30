@@ -6,16 +6,15 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Try it live](https://img.shields.io/badge/Try%20it-live-ff69b4)](https://codesandbox.io/p/sandbox/c9lv4v)
 
-**Zero dependencies.** Reactive, indexed and memoized in-memory tables and views — all in **<2 KB**.  
-Written in TypeScript with full type definitions. ESM + CJS compatible. Side-effects free.
+**Zero dependencies.** Reactive, indexed and memoized in-memory collections and views — all in **<2 KB**.  
+Written in TypeScript with full type definitions. Side-effects free.
 
-> **Incremental memoization for collections.**
+> **The correct way to memoize indexed/sorted/filtered collections.**
 >
-> `memotable` is not another state management library.  
-> It exists because most collection memoization people do with `useMemo` or similar hooks
-> is either unnecessary or wrong.  
-> This library brings that to the surface — and provides the correct alternative for the few
-> cases where real collection-level memoization is actually needed.
+> Most apps don’t need collection memoization — the DOM is almost always the real bottleneck.  
+> That said, when your data is huge, `memotable` gives you the *correct* memoization primitives.
+
+
 
 ## Why memotable
 
