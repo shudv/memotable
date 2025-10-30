@@ -82,46 +82,6 @@ pnpm add memotable
 yarn add memotable
 ```
 
-```ts
-import { Table } from "memotable";
-
-// Create a table
-const users = new Table<{ id: number; name: string; role: string }>();
-
-// Add items
-users.insert({ id: 1, name: "Alice", role: "admin" });
-users.insert({ id: 2, name: "Bob", role: "user" });
-
-// Apply filters and sorts
-users.applyFilter((user) => user.role === "admin");
-users.applyComparator((a, b) => a.name.localeCompare(b.name));
-
-// Subscribe to changes
-users.subscribe(() => {
-    console.log("Table updated:", users.getAll());
-});
-
-// Get filtered & sorted results
-console.log(users.getAll()); // [{ id: 1, name: "Alice", role: "admin" }]
-```
-
-**React integration:**
-
-```tsx
-import { useTable } from "memotable/react";
-
-function UserList({ table }) {
-    useTable(table); // Auto-subscribes and re-renders on changes
-    return (
-        <ul>
-            {table.items().map((user) => (
-                <li key={user.id}>{user.name}</li>
-            ))}
-        </ul>
-    );
-}
-```
-
 ## Live Demo
 
 Check out the [React Todo App example](./examples/react/TodoApp.tsx) — a complete interactive demo showing indexing, partition-specific sorting, and reactive updates.
