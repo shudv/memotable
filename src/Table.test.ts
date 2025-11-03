@@ -57,7 +57,7 @@ describe("Table - Unit Tests", () => {
         test("runBatch", () => {
             table = new Table<ITask>({ isEqual: (task1, task2) => task1.title === task2.title });
 
-            let changed = table.runBatch((t) => {
+            let changed = table.batch((t) => {
                 t.set("1", { title: "Task One*" });
                 t.set("2", { title: "Task Two*" });
                 t.delete("3");
@@ -71,7 +71,7 @@ describe("Table - Unit Tests", () => {
             expect(table.get("4")!.title).toEqual("Task Four*");
 
             // Duplicate execution should not change the table
-            changed = table.runBatch((t) => {
+            changed = table.batch((t) => {
                 t.set("1", { title: "Task One*" });
                 t.set("2", { title: "Task Two*" });
                 t.delete("3");
@@ -88,7 +88,7 @@ describe("Table - Unit Tests", () => {
 
             // Apply a filter that uses an array external to the table to determine inclusion
             const titlesToInclude: string[] = [];
-            table.applyFilter((item) => titlesToInclude.includes(item.title!));
+            table.filter((item) => titlesToInclude.includes(item.title!));
 
             // No items should be included initially
             expect(table.itemIds()).toEqual([]);
@@ -125,21 +125,21 @@ describe("Table - Unit Tests", () => {
 
             expect(table.items().length).toBe(0);
 
-            table.applyFilter((item) => (item.priority ?? 0) >= 2);
-            table.applyComparator((a, b) => (a.title.length > b.title.length ? 1 : -1));
+            table.filter((item) => (item.priority ?? 0) >= 2);
+            table.sort((a, b) => (a.title.length > b.title.length ? 1 : -1));
 
             expect(table.items().length).toBe(0);
         });
 
         test("Filtering", () => {
             // Apply a filter to the table
-            table.applyFilter((item) => (item.priority ?? 0) >= 2);
+            table.filter((item) => (item.priority ?? 0) >= 2);
 
             // View should honour the comparator and filter
             expect(table.itemIds().sort()).toEqual(["1", "4"].sort());
 
             // Apply a new filter that is more lenient
-            table.applyFilter((item) => item.priority !== undefined);
+            table.filter((item) => item.priority !== undefined);
             expect(table.itemIds().sort()).toEqual(["1", "3", "4"].sort());
 
             // Make table updates
@@ -150,19 +150,19 @@ describe("Table - Unit Tests", () => {
             expect(table.itemIds().sort()).toEqual(["1", "3", "5"].sort());
 
             // Remove the filter
-            table.applyFilter(null);
+            table.filter(null);
             expect(table.itemIds().sort()).toEqual(["1", "2", "3", "4", "5"].sort());
         });
 
         test("Ordering", () => {
             // Table should be ordered by title length
-            table.applyComparator((a, b) => (a.title.length > b.title.length ? 1 : -1));
+            table.sort((a, b) => (a.title.length > b.title.length ? 1 : -1));
 
             // The view should reflect the ordering
             expect(table.itemIds()).toEqual(["1", "2", "4", "3"]);
 
             // Apply a new comparator that sorts by title alphabetically
-            table.applyComparator((a, b) => a.title.localeCompare(b.title));
+            table.sort((a, b) => a.title.localeCompare(b.title));
             expect(table.itemIds()).toEqual(["2", "4", "1", "3"]);
 
             // Make table updates
@@ -173,13 +173,13 @@ describe("Table - Unit Tests", () => {
             expect(table.itemIds()).toEqual(["2", "6", "5", "1", "3", "4"]);
 
             // Remove the comparator
-            table.applyComparator(null);
+            table.sort(null);
             expect(table.itemIds().sort()).toEqual(["1", "2", "3", "4", "5", "6"].sort());
         });
 
         test("Combined filter and ordering", () => {
-            table.applyFilter((item) => (item.priority ?? 0) >= 2);
-            table.applyComparator((a, b) => a.title.localeCompare(b.title));
+            table.filter((item) => (item.priority ?? 0) >= 2);
+            table.sort((a, b) => a.title.localeCompare(b.title));
 
             // The table should be filtered and ordered
             expect(table.itemIds()).toEqual(["4", "1"]);
@@ -192,7 +192,7 @@ describe("Table - Unit Tests", () => {
             expect(table.itemIds()).toEqual(["1", "5"]);
 
             // Apply a new filter that allows all items
-            table.applyFilter((_) => true);
+            table.filter((_) => true);
             expect(table.itemIds()).toEqual(["2", "4", "1", "3", "5"]);
         });
 
@@ -235,8 +235,8 @@ describe("Table - Unit Tests", () => {
                 }
             };
 
-            viewPartition.applyFilter(viewFilter);
-            viewPartition.applyComparator(viewComparator);
+            viewPartition.filter(viewFilter);
+            viewPartition.sort(viewComparator);
 
             table.set("1", { planId: "p1", title: "A - p1" });
             table.set("2", { planId: "p1", title: "B - p1" });
@@ -269,8 +269,8 @@ describe("Table - Unit Tests", () => {
             expect(plan3ViewPartitionAInverse.itemIds()).toEqual(["10"]);
 
             // Apply a filter comparator at table level
-            table.applyFilter((task) => task.title!.length === 1);
-            table.applyComparator((a, b) => a.title!.localeCompare(b.title!));
+            table.filter((task) => task.title!.length === 1);
+            table.sort((a, b) => a.title!.localeCompare(b.title!));
 
             // All partitions should reflect the table level filter and sort
             expect(plan1ViewPartitionA.itemIds()).toEqual(["3"]);
@@ -290,7 +290,7 @@ describe("Table - Unit Tests", () => {
             table.set("4", { title: "Task Four" });
 
             // Apply a filter to the table which does not have any index yet
-            table.applyFilter((item) => (item.priority ?? 0) >= 1);
+            table.filter((item) => (item.priority ?? 0) >= 1);
 
             // Now register an index
             table.registerIndex("title", (item) => item.title);
@@ -303,7 +303,7 @@ describe("Table - Unit Tests", () => {
             expect(index.partition("Task Four").itemIds()).toEqual([]);
 
             // Now remove the filter
-            table.applyFilter(null);
+            table.filter(null);
 
             // The index partitions should reflect the removal of the filter
             expect(index.partition("Task One").itemIds()).toEqual(["1"]);
@@ -315,10 +315,10 @@ describe("Table - Unit Tests", () => {
         test("refreshView", () => {
             const viewConfig = { minPriority: 2, sortByPriorityAsc: true };
 
-            table.applyFilter(
+            table.filter(
                 (item) => item.priority !== undefined && item.priority >= viewConfig.minPriority,
             );
-            table.applyComparator((a, b) => {
+            table.sort((a, b) => {
                 if (viewConfig.sortByPriorityAsc) {
                     return (a.priority ?? 0) - (b.priority ?? 0);
                 }
@@ -341,24 +341,24 @@ describe("Table - Unit Tests", () => {
         });
 
         test("filter removal while comparator is applied", () => {
-            table.applyFilter((item) => (item.priority ?? 0) >= 2);
-            table.applyComparator((a, b) => a.title.localeCompare(b.title));
+            table.filter((item) => (item.priority ?? 0) >= 2);
+            table.sort((a, b) => a.title.localeCompare(b.title));
 
             // The table should be filtered and ordered
             expect(table.itemIds()).toEqual(["4", "1"]);
 
-            table.applyFilter(null);
+            table.filter(null);
             expect(table.itemIds().sort()).toEqual(["1", "2", "3", "4"].sort());
         });
 
         test("comparator removal while filter is applied", () => {
-            table.applyComparator((a, b) => a.title.localeCompare(b.title));
-            table.applyFilter((item) => (item.priority ?? 0) >= 2);
+            table.sort((a, b) => a.title.localeCompare(b.title));
+            table.filter((item) => (item.priority ?? 0) >= 2);
 
             // The table should be ordered and filtered
             expect(table.itemIds()).toEqual(["4", "1"]);
 
-            table.applyComparator(null);
+            table.sort(null);
             expect(table.itemIds().sort()).toEqual(["1", "4"].sort());
         });
     });
@@ -438,7 +438,7 @@ describe("Table - Unit Tests", () => {
 
             const p1 = table.index("plan").partition("p1");
             // Application of filter should not affect order
-            p1.applyFilter((item) => item.title.startsWith("T"));
+            p1.filter((item) => item.title.startsWith("T"));
 
             const viewIdsOriginalOrder = p1.itemIds();
             expect(viewIdsOriginalOrder.sort()).toEqual(["1", "2", "3"].sort());
@@ -661,7 +661,7 @@ describe("Table - Unit Tests", () => {
             const plan1BoardPendingPartition = plan1BoardStatusIndex.partition("pending");
 
             // Apply a filter at the plan level so that it applies to all views
-            plan1Partition.applyFilter((task) => (task.priority ?? 0) >= 4);
+            plan1Partition.filter((task) => (task.priority ?? 0) >= 4);
 
             expect(plan1Partition.itemIds().sort()).toEqual(["1", "3", "5"]);
             expect(plan1GridPartition.itemIds().sort()).toEqual(["1", "3", "5"]);
@@ -670,8 +670,8 @@ describe("Table - Unit Tests", () => {
             expect(plan1BoardPendingPartition.itemIds().sort()).toEqual(["1", "3"]);
 
             // Apply different comparators for the grid and board view partitions
-            plan1GridPartition.applyComparator((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-            plan1BoardPartition.applyComparator((a, b) => a.title.localeCompare(b.title));
+            plan1GridPartition.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+            plan1BoardPartition.sort((a, b) => a.title.localeCompare(b.title));
 
             expect(plan1GridPartition.itemIds()).toEqual(["3", "5", "1"]); // Should be sorted by priority descending
             expect(plan1BoardPartition.itemIds()).toEqual(["1", "3", "5"]); // Should be sorted by title alphabetically
@@ -686,8 +686,8 @@ describe("Table - Unit Tests", () => {
             const plan1Partition = planIndex.partition("plan1");
 
             // Apply a filter at the plan level
-            plan1Partition.applyFilter((task) => !!task.isCompleted);
-            plan1Partition.applyComparator((a, b) => a.title.localeCompare(b.title));
+            plan1Partition.filter((task) => !!task.isCompleted);
+            plan1Partition.sort((a, b) => a.title.localeCompare(b.title));
 
             // Create a priority class partitioning with one partition that has no items
             plan1Partition.registerIndex("priority", (task) =>
@@ -778,7 +778,7 @@ describe("Table - Unit Tests", () => {
             table.set("2", { title: "Task Two" });
             table.nextDelta(); // Discard the initial batch
 
-            table.runBatch((t) => {
+            table.batch((t) => {
                 t.set("1", { title: "Updated Task One" });
                 t.delete("2");
             });
@@ -838,7 +838,7 @@ describe("Table - Unit Tests", () => {
             const callback = vi.fn();
             table.subscribe(callback);
 
-            table.runBatch((t) => {
+            table.batch((t) => {
                 t.set("1", { title: "Task One" });
                 t.set("2", { title: "Task Two" });
                 t.set("3", { title: "Task Three" });
@@ -872,11 +872,11 @@ describe("Table - Unit Tests", () => {
             const callback = vi.fn();
             table.subscribe(callback);
 
-            table.applyFilter((task) => (task.priority ?? 0) >= 2);
+            table.filter((task) => (task.priority ?? 0) >= 2);
             expect(callback).toHaveBeenCalledTimes(1);
             expect(callback).toHaveBeenCalledWith([]); // Empty delta for view change
 
-            table.applyComparator((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+            table.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
             expect(callback).toHaveBeenCalledTimes(2);
             expect(callback).toHaveBeenCalledWith([]); // Empty delta for view change
         });
@@ -896,7 +896,7 @@ describe("Table - Unit Tests", () => {
             table.set("3", { title: "Task Three", planId: "p2", priority: 2 });
 
             // Apply a filter so that terminal partitions are materialized
-            table.applyFilter((task) => (task.priority ?? 0) >= 2);
+            table.filter((task) => (task.priority ?? 0) >= 2);
 
             // expect terminal partitions to be materialized
             // HACK: Given the table does not expose materialization state, we check by reference equality
@@ -931,7 +931,7 @@ describe("Table - Unit Tests", () => {
             table.set("3", { title: "Task Three", planId: "p2", priority: 2 });
 
             // Apply a filter so that priority partitions are materialized
-            table.applyFilter((task) => (task.priority ?? 0) >= 2);
+            table.filter((task) => (task.priority ?? 0) >= 2);
 
             // Expect priority partitions to be materialized
             expect(table.index("priority").partition("2").itemIds()).toBe(

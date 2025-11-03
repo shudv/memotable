@@ -24,6 +24,6 @@ import type { IReadOnlyTable } from "../../contracts/IReadOnlyTable";
  * ```
  */
 export function useTable<T>(table: IReadOnlyTable<T>) {
-    const [, setRenderKey] = useState(0); // State to trigger re-renders
-    useEffect(() => table.subscribe(() => setRenderKey((key) => key + 1)));
+    const [, tick] = useState(0); // State to trigger re-renders
+    useEffect(() => table.subscribe(() => tick((key) => key + 1)));
 }

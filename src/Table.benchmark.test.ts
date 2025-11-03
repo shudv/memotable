@@ -20,6 +20,7 @@ interface BenchmarkConfig {
     importantRate: number;
     numEdits: number;
     numReads: number;
+    iterations: number; // Number of times to repeat the benchmark
 }
 
 interface Task {
@@ -43,8 +44,19 @@ interface BenchmarkResult {
     numReads: number;
 }
 
+interface AggregatedResult {
+    scenario: string;
+    loadTime: { mean: number; stdDev: number };
+    editTime: { mean: number; stdDev: number };
+    readTime: { mean: number; stdDev: number };
+    totalTime: { mean: number; stdDev: number };
+    numEdits: number;
+    numReads: number;
+}
+
 // Default configuration
 const LoadFactor = 1;
+const IterationCount = 3;
 const ReadWriteRatio = 5; // Must be greater than 1 to simulate read-heavy workloads
 const DEFAULT_CONFIG: BenchmarkConfig = {
     numLists: 50 * LoadFactor,
@@ -53,6 +65,7 @@ const DEFAULT_CONFIG: BenchmarkConfig = {
     importantRate: 0.1,
     numEdits: 100 * LoadFactor,
     numReads: ReadWriteRatio * 100 * LoadFactor,
+    iterations: IterationCount, // Number of benchmark iterations
 };
 
 // ============================================================================
@@ -140,7 +153,7 @@ function setupTableImplementation(): Table<Task> {
     table.registerIndex("importance", (task) => (task.isImportant ? "important" : undefined));
 
     // Global filter + comparator that adapts based on partition path
-    table.applyFilter((task, path) => {
+    table.filter((task, path) => {
         // If in a list partition, filter by listId and not completed
         if (path.length > 2 && path.at(-2) === "list") {
             return task.isCompleted;
@@ -150,7 +163,7 @@ function setupTableImplementation(): Table<Task> {
     });
 
     // Global comparator that adapts based on partition path
-    table.applyComparator((a, b, path) => {
+    table.sort((a, b, path) => {
         // If in a list partition, sort by importance + createdAt
         if (path.length > 2 && path.at(-2) === "list") {
             if (a.isImportant !== b.isImportant) {
@@ -237,7 +250,7 @@ function benchmarkMemoTable(tasks: Task[], config: BenchmarkConfig): BenchmarkRe
 
     // Benchmark initial load
     const loadStart = performance.now();
-    table.runBatch(() => {
+    table.batch(() => {
         for (const task of tasks) {
             table.set(task.id, task);
         }
@@ -271,6 +284,67 @@ function benchmarkMemoTable(tasks: Task[], config: BenchmarkConfig): BenchmarkRe
 }
 
 // ============================================================================
+// Statistical Analysis Functions
+// ============================================================================
+
+function calculateMean(values: number[]): number {
+    return values.reduce((sum, val) => sum + val, 0) / values.length;
+}
+
+function calculateStdDev(values: number[]): number {
+    const mean = calculateMean(values);
+    const squaredDiffs = values.map((val) => Math.pow(val - mean, 2));
+    const variance = calculateMean(squaredDiffs);
+    return Math.sqrt(variance);
+}
+
+function aggregateResults(results: BenchmarkResult[]): AggregatedResult {
+    const loadTimes = results.map((r) => r.loadTimeMs);
+    const editTimes = results.map((r) => r.editTimeMs);
+    const readTimes = results.map((r) => r.readTimeMs);
+    const totalTimes = results.map((r) => r.loadTimeMs + r.editTimeMs + r.readTimeMs);
+
+    return {
+        scenario: results[0]!.scenario,
+        loadTime: {
+            mean: calculateMean(loadTimes),
+            stdDev: calculateStdDev(loadTimes),
+        },
+        editTime: {
+            mean: calculateMean(editTimes),
+            stdDev: calculateStdDev(editTimes),
+        },
+        readTime: {
+            mean: calculateMean(readTimes),
+            stdDev: calculateStdDev(readTimes),
+        },
+        totalTime: {
+            mean: calculateMean(totalTimes),
+            stdDev: calculateStdDev(totalTimes),
+        },
+        numEdits: results[0]!.numEdits,
+        numReads: results[0]!.numReads,
+    };
+}
+
+function runMultipleBenchmarks(
+    benchmarkFn: (tasks: Task[], config: BenchmarkConfig) => BenchmarkResult,
+    tasks: Task[],
+    config: BenchmarkConfig,
+): AggregatedResult {
+    const results: BenchmarkResult[] = [];
+
+    for (let i = 0; i < config.iterations; i++) {
+        // Create a fresh copy of tasks for each iteration
+        const tasksCopy = tasks.map((t) => ({ ...t }));
+        const result = benchmarkFn(tasksCopy, config);
+        results.push(result);
+    }
+
+    return aggregateResults(results);
+}
+
+// ============================================================================
 // Test Suite
 // ============================================================================
 
@@ -287,49 +361,53 @@ describe("Table - Performance Benchmarks", () => {
         console.log(`  Completion rate: ${(config.completionRate * 100).toFixed(0)}%`);
         console.log(`  Important rate: ${(config.importantRate * 100).toFixed(0)}%`);
         console.log(`  Edit operations: ${config.numEdits}`);
-        console.log(`  Read operations: ${config.numReads}\n`);
+        console.log(`  Read operations: ${config.numReads}`);
+        console.log(`  Iterations: ${config.iterations}\n`);
 
         tasks = generateTasks(config);
     });
 
     test("memotable vs vanilla performance comparison", () => {
-        const vanillaResult = benchmarkVanilla([...tasks], config);
-        const tableResult = benchmarkMemoTable([...tasks], config);
+        console.log(`Running ${config.iterations} iterations for each scenario...\n`);
+
+        const vanillaResult = runMultipleBenchmarks(benchmarkVanilla, tasks, config);
+        const tableResult = runMultipleBenchmarks(benchmarkMemoTable, tasks, config);
 
         // Basic sanity checks
-        expect(vanillaResult.loadTimeMs).toBeGreaterThan(0);
-        expect(vanillaResult.editTimeMs).toBeGreaterThan(0);
-        expect(vanillaResult.readTimeMs).toBeGreaterThan(0);
-        expect(tableResult.loadTimeMs).toBeGreaterThan(0);
-        expect(tableResult.editTimeMs).toBeGreaterThan(0);
-        expect(tableResult.readTimeMs).toBeGreaterThan(0);
+        expect(vanillaResult.loadTime.mean).toBeGreaterThan(0);
+        expect(vanillaResult.editTime.mean).toBeGreaterThan(0);
+        expect(vanillaResult.readTime.mean).toBeGreaterThan(0);
+        expect(tableResult.loadTime.mean).toBeGreaterThan(0);
+        expect(tableResult.editTime.mean).toBeGreaterThan(0);
+        expect(tableResult.readTime.mean).toBeGreaterThan(0);
 
         // Performance assertions
-        const readSpeedup = vanillaResult.readTimeMs / tableResult.readTimeMs;
-        const vanillaTotal =
-            vanillaResult.loadTimeMs + vanillaResult.editTimeMs + vanillaResult.readTimeMs;
-        const tableTotal = tableResult.loadTimeMs + tableResult.editTimeMs + tableResult.readTimeMs;
-        const totalSpeedup = vanillaTotal / tableTotal;
+        const readSpeedup = vanillaResult.readTime.mean / tableResult.readTime.mean;
+        const totalSpeedup = vanillaResult.totalTime.mean / tableResult.totalTime.mean;
 
         // memotable reads should be faster than vanilla
-        expect(tableResult.readTimeMs).toBeLessThan(vanillaResult.readTimeMs);
+        expect(tableResult.readTime.mean).toBeLessThan(vanillaResult.readTime.mean);
 
         // memotable overall should be faster than vanilla (for read-heavy workloads)
-        expect(tableTotal).toBeLessThan(vanillaTotal);
+        expect(tableResult.totalTime.mean).toBeLessThan(vanillaResult.totalTime.mean);
 
         // Display comparison table
         const numTasksLoaded = config.numLists * config.tasksPerList;
-        const COL_WIDTH = 20;
+        const COL_WIDTH = 25;
         const TABLE_WIDTH = COL_WIDTH * 5;
 
         console.log("=".repeat(TABLE_WIDTH));
-        console.log("📈 PERFORMANCE COMPARISON");
+        console.log("📈 PERFORMANCE COMPARISON (AVERAGE OF " + config.iterations + " RUNS)");
         console.log("=".repeat(TABLE_WIDTH) + "\n");
 
-        const vanillaEditPerOp = vanillaResult.editTimeMs / vanillaResult.numEdits;
-        const tableEditPerOp = tableResult.editTimeMs / tableResult.numEdits;
+        const vanillaEditPerOp = vanillaResult.editTime.mean / vanillaResult.numEdits;
+        const tableEditPerOp = tableResult.editTime.mean / tableResult.numEdits;
 
-        // Display results with dynamic column widths
+        // Display results with mean ± stddev
+        const formatMetric = (mean: number, stdDev: number) => {
+            return `${mean.toFixed(1)} ± ${stdDev.toFixed(1)}ms`;
+        };
+
         console.log(
             [
                 "Scenario",
@@ -345,10 +423,10 @@ describe("Table - Performance Benchmarks", () => {
         console.log(
             [
                 "vanilla",
-                `${vanillaResult.loadTimeMs.toFixed(1)}ms`,
-                `${vanillaResult.editTimeMs.toFixed(1)}ms`,
-                `${vanillaResult.readTimeMs.toFixed(1)}ms`,
-                `${vanillaTotal.toFixed(1)}ms`,
+                formatMetric(vanillaResult.loadTime.mean, vanillaResult.loadTime.stdDev),
+                formatMetric(vanillaResult.editTime.mean, vanillaResult.editTime.stdDev),
+                formatMetric(vanillaResult.readTime.mean, vanillaResult.readTime.stdDev),
+                formatMetric(vanillaResult.totalTime.mean, vanillaResult.totalTime.stdDev),
             ]
                 .map((c) => c.padEnd(COL_WIDTH))
                 .join(""),
@@ -356,10 +434,10 @@ describe("Table - Performance Benchmarks", () => {
         console.log(
             [
                 "memotable",
-                `${tableResult.loadTimeMs.toFixed(1)}ms`,
-                `${tableResult.editTimeMs.toFixed(1)}ms`,
-                `${tableResult.readTimeMs.toFixed(1)}ms`,
-                `${tableTotal.toFixed(1)}ms`,
+                formatMetric(tableResult.loadTime.mean, tableResult.loadTime.stdDev),
+                formatMetric(tableResult.editTime.mean, tableResult.editTime.stdDev),
+                formatMetric(tableResult.readTime.mean, tableResult.readTime.stdDev),
+                formatMetric(tableResult.totalTime.mean, tableResult.totalTime.stdDev),
             ]
                 .map((c) => c.padEnd(COL_WIDTH))
                 .join(""),
@@ -369,13 +447,13 @@ describe("Table - Performance Benchmarks", () => {
 
         // Key insights
         const ERROR_MARGIN = 0.1; // 10% margin for "similar" performance
-        const loadSlowdown = tableResult.loadTimeMs / vanillaResult.loadTimeMs;
+        const loadSlowdown = tableResult.loadTime.mean / vanillaResult.loadTime.mean;
         const editSlowdown = tableEditPerOp / vanillaEditPerOp;
         const readWriteRatio = config.numReads / config.numEdits;
 
         console.log("\n💡 Key Insights:");
         console.log(
-            `  • memotable is ${loadSlowdown.toFixed(1)}x slower for initial load (${vanillaResult.loadTimeMs.toFixed(1)}ms vs ${tableResult.loadTimeMs.toFixed(1)}ms)`,
+            `  • memotable is ${loadSlowdown.toFixed(1)}x slower for initial load (${vanillaResult.loadTime.mean.toFixed(1)}ms vs ${tableResult.loadTime.mean.toFixed(1)}ms)`,
         );
         console.log(
             `  • memotable is ${readSpeedup.toFixed(1)}x faster for reads but ${editSlowdown.toFixed(1)}x slower for edits`,
@@ -384,11 +462,11 @@ describe("Table - Performance Benchmarks", () => {
         // Overall performance comparison with error margin
         if (Math.abs(totalSpeedup - 1.0) <= ERROR_MARGIN) {
             console.log(
-                `  • Overall: memotable performs similar to vanilla for read/write ratio of ${readWriteRatio.toFixed(1)} (${vanillaTotal.toFixed(1)}ms vs ${tableTotal.toFixed(1)}ms)`,
+                `  • Overall: memotable performs similar to vanilla for read/write ratio of ${readWriteRatio.toFixed(1)} (${vanillaResult.totalTime.mean.toFixed(1)}ms vs ${tableResult.totalTime.mean.toFixed(1)}ms)`,
             );
         } else {
             console.log(
-                `  • Overall: memotable is ${totalSpeedup.toFixed(1)}x ${totalSpeedup > 1 ? "faster" : "slower"} for read/write ratio of ${readWriteRatio.toFixed(1)} (${vanillaTotal.toFixed(1)}ms vs ${tableTotal.toFixed(1)}ms)`,
+                `  • Overall: memotable is ${totalSpeedup.toFixed(1)}x ${totalSpeedup > 1 ? "faster" : "slower"} for read/write ratio of ${readWriteRatio.toFixed(1)} (${vanillaResult.totalTime.mean.toFixed(1)}ms vs ${tableResult.totalTime.mean.toFixed(1)}ms)`,
             );
         }
 

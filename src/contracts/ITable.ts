@@ -31,7 +31,7 @@ export interface ITable<T> extends IReadOnlyTable<T>, IDeltaTrackedTable {
 
     /**
      * Run a batch of operations on the table
-     * @param batch Function that receives the table as an argument and performs multiple operations on it
+     * @param fn Function that receives the table as an argument and performs multiple edit operations on it
      */
-    runBatch(batch: (t: ITable<T>) => void): boolean;
+    batch(fn: (t: ITable<T>) => void): boolean;
 }

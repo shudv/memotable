@@ -82,7 +82,7 @@ describe("useTable", () => {
         const initialCount = renderCount;
 
         act(() => {
-            table.runBatch(() => {
+            table.batch(() => {
                 table.set("task-1", { id: "task-1", title: "Task 1", completed: false });
                 table.set("task-2", { id: "task-2", title: "Task 2", completed: false });
                 table.set("task-3", { id: "task-3", title: "Task 3", completed: false });
@@ -103,13 +103,13 @@ describe("useTable", () => {
         const initialCount = renderCount;
 
         act(() => {
-            table.applyFilter((item) => item.completed === false);
+            table.filter((item) => item.completed === false);
         });
 
         expect(renderCount).toBe(initialCount + 1);
 
         act(() => {
-            table.applyComparator((a, b) => a.title.localeCompare(b.title));
+            table.sort((a, b) => a.title.localeCompare(b.title));
         });
 
         expect(renderCount).toBe(initialCount + 2);

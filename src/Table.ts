@@ -28,7 +28,7 @@ export class Table<T> implements ITable<T> {
     // Table configuration with defaults
     private readonly _config: ITableConfig<T> = {
         name: "", // Default empty name
-        isEqual: () => false, // Default equality check always returns false
+        isEqual: (item1: T, item2: T) => item1 === item2, // Default equality check
         deltaTracking: true, // Delta tracking enabled by default
         shouldMaterialize: (_, isTerminal) => isTerminal, // Materialize only terminal partitions
     };
@@ -78,22 +78,46 @@ export class Table<T> implements ITable<T> {
         }
     }
 
-    public set(id: string, value: T | null): boolean {
-        return this._setInternal(id, value);
+    public set(id: string, value: T | null) {
+        // Step 1: Check if the item needs to be updated
+        const currentValue = this.get(id);
+        if (
+            (currentValue === null && value === null) ||
+            (currentValue !== null && value !== null && this._config.isEqual(currentValue, value))
+        ) {
+            return false;
+        }
+
+        // Step 2: Update the item in the table
+        if (value !== null) {
+            this._items[id] = value;
+        } else {
+            delete this._items[id];
+        }
+
+        // Step 3: Propagate changes to derived structures (index, view, subscribers)
+        this._propagateChanges([id]);
+
+        // Step 4: Flag the item as modified
+        if (this._config.deltaTracking) {
+            this._flag(id);
+        }
+
+        return true;
     }
 
     public delete(id: string): boolean {
-        return this._setInternal(id, null);
+        return this.set(id, null);
     }
 
     public refresh(id: string) {
         this._propagateChanges([id]);
     }
 
-    public runBatch(batch: (t: ITable<T>) => void): boolean {
+    public batch(fn: (t: ITable<T>) => void): boolean {
         // Step 1: Run the batch of operations and mark start and end to disable change propagation on every set/delete
         this._isBatchOperationInProgress = true;
-        batch(this);
+        fn(this);
         this._isBatchOperationInProgress = false;
 
         // Step 2: After the batch is complete, propagate all accumulated changes
@@ -127,14 +151,14 @@ export class Table<T> implements ITable<T> {
     private _filter: IFilter<T> | null = null;
     private _comparator: IComparator<T> | null = null;
 
-    public applyComparator(comparator: IComparator<T> | null) {
+    public sort(comparator: IComparator<T> | null) {
         this._comparator = comparator;
         const path = this._getTablePathTokens();
 
         // Step 1: Apply the comparator to all child partitions
         if (this._hasPartitions()) {
             for (const partition of this._partitions()) {
-                partition.applyComparator(comparator);
+                partition.sort(comparator);
             }
         }
 
@@ -156,19 +180,19 @@ export class Table<T> implements ITable<T> {
     }
 
     /**
-     * Following implementation of applyFilter guarantees O(N + M*log2(M)) time complexity,
+     * Following implementation of filter guarantees O(N + M*log2(M)) time complexity,
      * where N is the number of current items in the view and M is the number of new items
      * that need to be added to the view. This is only consequential when N>>M, otherwise
      * the practical performance is close the naive O(N*log2N) implementation.
      */
-    public applyFilter(filter: IFilter<T> | null) {
+    public filter(filter: IFilter<T> | null) {
         this._filter = filter;
         const path = this._getTablePathTokens();
 
         // Step 1: If this table has partitions, apply the filter to all child partitions
         if (this._hasPartitions()) {
             for (const partition of this._partitions()) {
-                partition.applyFilter(filter);
+                partition.filter(filter);
             }
         }
 
@@ -204,8 +228,8 @@ export class Table<T> implements ITable<T> {
     }
 
     public refreshView(): void {
-        this.applyFilter(this._filter);
-        this.applyComparator(this._comparator);
+        this.filter(this._filter);
+        this.sort(this._comparator);
     }
 
     // #endregion
@@ -302,43 +326,6 @@ export class Table<T> implements ITable<T> {
     // #region PRIVATE HELPERS
 
     /**
-     * Core item update method with change detection and subsequent updates
-     * to ensure index and view consistency.
-     *
-     * @param id Item id
-     * @param value Item value
-     * @param shouldTrack Whether to track the item as modified in the next delta. Defaults to true.
-     * @returns True item was actually updated, false otherwise
-     */
-    private _setInternal(id: string, value: T | null): boolean {
-        // Step 1: Check if the item needs to be updated
-        const currentValue = this.get(id);
-        if (
-            (currentValue === null && value === null) ||
-            (currentValue !== null && value !== null && this._config.isEqual(currentValue, value))
-        ) {
-            return false;
-        }
-
-        // Step 2: Update the item in the table
-        if (value !== null) {
-            this._items[id] = value;
-        } else {
-            delete this._items[id];
-        }
-
-        // Step 3: Propagate changes to derived structures (index, view, subscribers)
-        this._propagateChanges([id]);
-
-        // Step 4: Flag the item as modified
-        if (this._config.deltaTracking) {
-            this._flag(id);
-        }
-
-        return true;
-    }
-
-    /**
      * Propagate changes to indexes, views and notify subscribers.
      * @param updatedIds Array of item IDs that have been updated
      */
@@ -397,7 +384,7 @@ export class Table<T> implements ITable<T> {
         for (const indexName of Object.keys(batch)) {
             for (const partitionKey of Object.keys(batch[indexName]!)) {
                 const partition = this._indexes[indexName]!.partition(partitionKey);
-                partition.runBatch((t) => {
+                partition.batch((t) => {
                     for (const [id, value] of Object.entries(batch[indexName]![partitionKey]!)) {
                         t.set(id, value);
                     }
@@ -682,8 +669,8 @@ class RuntimeIndex<T> implements IRuntimeIndex<T> {
             });
 
             // Propagate the parent filter and comparator to the partition
-            this._partitions[key].applyFilter(this._getParentFilter());
-            this._partitions[key].applyComparator(this._getParentComparator());
+            this._partitions[key].filter(this._getParentFilter());
+            this._partitions[key].sort(this._getParentComparator());
         }
 
         return this._partitions[key];

@@ -29,7 +29,7 @@ const todoTable = new Table<Todo>();
 todoTable.registerIndex("View", (todo) => getPartitions(todo));
 
 // Apply filter with sorting logic
-todoTable.applyComparator((a, b, path) => {
+todoTable.sort((a, b, path) => {
     if (path.length > 1 && path.at(-1) === "Important") {
         // not root
         return a.dueDate.getTime() - b.dueDate.getTime();
@@ -97,9 +97,9 @@ export function TodoApp() {
         setKeyword(value);
 
         if (value.trim() === "") {
-            todoTable.applyFilter(null);
+            todoTable.filter(null);
         } else {
-            todoTable.applyFilter((todo) => todo.title.toLowerCase().includes(value.toLowerCase()));
+            todoTable.filter((todo) => todo.title.toLowerCase().includes(value.toLowerCase()));
         }
     };
 

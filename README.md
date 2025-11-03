@@ -12,9 +12,7 @@ Written in TypeScript with full type definitions. Side-effects free.
 > **The correct way to memoize indexed/sorted/filtered collections.**
 >
 > Most apps don’t need collection memoization — the DOM is almost always the real bottleneck.  
-> That said, when your data is huge, `memotable` gives you the *correct* memoization primitives.
-
-
+> That said, when your data is huge, `memotable` gives you the _correct_ memoization primitives.
 
 ## Why memotable
 
@@ -31,9 +29,10 @@ function TaskList({ tasks, filter, comparator }) {
 ```
 
 This has two fundamental problems:
+
 - If you mutate the array in place, `useMemo` can silently return **stale data** because the reference didn’t change.
 - If you recreate the array on every render, you pay **full recomputation cost** every time — so your “optimization” does nothing.
-  
+
 Most of the time, you don’t need to “memoize” collections at all — just recompute them and move on.
 But when you _do_ need to avoid recomputation — say, thousands of items with heavy filter/comparator logic —  
 you need a structure that’s actually designed for that.
@@ -50,8 +49,8 @@ It provides:
 
 ```tsx
 const taskTable = new Table<Task>(); // Structure defined once
-taskTable.applyFilter(filter); // ✅ Filter applied and maintained incrementally
-taskTable.applyComparator(comparator); // ✅ Comparator applied and maintained incrementally
+taskTable.filter(filter); // ✅ Filter applied and maintained incrementally
+taskTable.sort(comparator); // ✅ Comparator applied and maintained incrementally
 
 function TaskList({ taskTable }) {
     // ✅ Simpler React component that just renders the data in the table

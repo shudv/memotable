@@ -3,18 +3,18 @@
  */
 export interface IViewTable<T> {
     /**
-     * Apply a new comparator to the table view.
+     * Sort the table view.
      *
      * @param comparator The comparator function to apply, or null to remove sorting
      */
-    applyComparator(comparator: IComparator<T> | null): void;
+    sort(comparator: IComparator<T> | null): void;
 
     /**
      * Apply a new filter to the table view.
      *
      * @param filter The filter function to apply, or null to remove filtering
      */
-    applyFilter(filter: IFilter<T> | null): void;
+    filter(filter: IFilter<T> | null): void;
 
     /**
      * Refresh the view based on the current filter and comparator.
