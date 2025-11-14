@@ -24,12 +24,6 @@ export interface ITable<T> extends IReadOnlyTable<T>, IDeltaTrackedTable {
     refresh(id: string): void;
 
     /**
-     * Delete an item from the table
-     * @param id Item id
-     */
-    delete(id: string): boolean;
-
-    /**
      * Run a batch of operations on the table
      * @param fn Function that receives the table as an argument and performs multiple edit operations on it
      */

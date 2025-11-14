@@ -147,10 +147,10 @@ function setupTableImplementation(): Table<Task> {
     const table = new Table<Task>();
 
     // Index by list
-    table.registerIndex("list", (task) => task.listId);
+    table.indexBy("list", (task) => task.listId);
 
     // Index by importance (for composite "Important" view)
-    table.registerIndex("importance", (task) => (task.isImportant ? "important" : undefined));
+    table.indexBy("importance", (task) => (task.isImportant ? "important" : undefined));
 
     // Global filter + comparator that adapts based on partition path
     table.filter((task, path) => {
@@ -266,9 +266,9 @@ function benchmarkMemoTable(tasks: Task[], config: BenchmarkConfig): BenchmarkRe
     const readStart = performance.now();
     for (let i = 0; i < config.numReads; i++) {
         const listId = `list-${Math.floor(Math.random() * config.numLists)}`;
-        table.index("list").partition(listId).items();
+        table.bucket("list").partition(listId).items();
         if (i % 10 === 0) {
-            table.index("importance").partition("important").items();
+            table.bucket("importance").partition("important").items();
         }
     }
     const readEnd = performance.now();

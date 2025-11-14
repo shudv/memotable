@@ -1,14 +1,17 @@
 // Contracts
 import { IDelta } from "./IDeltaTrackedTable";
-import { IIndexedTable } from "./IIndexedTable";
+import { IIndexableTable } from "./IIndexableTable";
 import { IObservable } from "./IObservable";
-import { IViewTable } from "./IViewTable";
+import { ISortableTable } from "./ISortableTable";
 
 /**
- * Interface for a read-only table that supports read operations, indexing, sorting, filtering.
+ * Interface for a read-only table that supports read operations, indexing, sorting.
  * @template T Type of the items in the table
  */
-export interface IReadOnlyTable<T> extends IIndexedTable<T>, IViewTable<T>, IObservable<IDelta> {
+export interface IReadOnlyTable<T>
+    extends IIndexableTable<T>,
+        ISortableTable<T>,
+        IObservable<IDelta> {
     /**
      * Get the table item with the given id
      * @param id Item id
@@ -23,5 +26,5 @@ export interface IReadOnlyTable<T> extends IIndexedTable<T>, IViewTable<T>, IObs
     /**
      * Get all items in the table
      */
-    itemIds(): string[];
+    ids(): string[];
 }

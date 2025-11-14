@@ -103,7 +103,7 @@
         {
             "path": "dist/index.js",
             "import": "{ Table }",
-            "limit": "2 kB"
+            "limit": "1 kB"
         }
     ],
     "packageManager": "pnpm@10.20.0",

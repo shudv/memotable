@@ -26,7 +26,7 @@ function getPartitions(todo: Todo): string[] {
 const todoTable = new Table<Todo>();
 
 // Register partition index
-todoTable.registerIndex("View", (todo) => getPartitions(todo));
+todoTable.indexBy("View", (todo) => getPartitions(todo));
 
 // Apply filter with sorting logic
 todoTable.sort((a, b, path) => {
@@ -145,7 +145,7 @@ export function TodoApp() {
                     <ListView
                         key={partitionKey}
                         title={partitionKey}
-                        table={todoTable.index("View").partition(partitionKey)}
+                        table={todoTable.bucket("View").partition(partitionKey)}
                     />
                 ))}
             </div>
