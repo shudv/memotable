@@ -101,8 +101,15 @@
     },
     "size-limit": [
         {
+            "name": "Table",
             "path": "dist/index.js",
             "import": "{ Table }",
+            "limit": "1 kB"
+        },
+        {
+            "name": "TrackedTable",
+            "path": "dist/index.js",
+            "import": "{ TrackedTable }",
             "limit": "1 kB"
         }
     ],

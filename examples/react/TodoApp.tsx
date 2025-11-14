@@ -26,10 +26,10 @@ function getPartitions(todo: Todo): string[] {
 const todoTable = new Table<Todo>();
 
 // Register partition index
-todoTable.indexBy("View", (todo) => getPartitions(todo));
+todoTable.index("View", (todo) => getPartitions(todo));
 
 // Apply filter with sorting logic
-todoTable.sort((a, b, path) => {
+todoTable.sort((a, b) => {
     if (path.length > 1 && path.at(-1) === "Important") {
         // not root
         return a.dueDate.getTime() - b.dueDate.getTime();
@@ -145,7 +145,7 @@ export function TodoApp() {
                     <ListView
                         key={partitionKey}
                         title={partitionKey}
-                        table={todoTable.bucket("View").partition(partitionKey)}
+                        table={todoTable.partition("View").partition(partitionKey)}
                     />
                 ))}
             </div>

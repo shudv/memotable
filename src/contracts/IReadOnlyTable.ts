@@ -1,5 +1,5 @@
 // Contracts
-import { IDelta } from "./IDeltaTrackedTable";
+import { IDelta } from "./ITrackedTable";
 import { IIndexableTable } from "./IIndexableTable";
 import { IObservable } from "./IObservable";
 import { ISortableTable } from "./ISortableTable";

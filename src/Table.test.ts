@@ -1,66 +1,64 @@
-// Table
+import { describe, it, expect, vi } from "vitest";
 import { Table } from "./Table";
 
-interface ITask {
-    title: string;
-    planId?: string;
-    priority?: number;
-    tags?: string[];
-    description?: string;
-    isCompleted?: boolean;
-}
+// Test item types
+type ITask = { title: string };
+type ICategoryItem = { id: string; category: string };
+type IPerson = { name: string; age: number };
 
-describe("Table - Unit Tests", () => {
-    let table: Table<ITask>;
-
-    beforeEach(() => {
-        table = new Table<ITask>();
-    });
-
-    describe("Basic operations", () => {
-        test("set and get", () => {
+describe("Table", () => {
+    describe("Basic Operations", () => {
+        it("should get and set items", () => {
+            const table = new Table<ITask>();
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
             table.set("3", { title: "Task Three" });
 
             expect(table.get("1")?.title).toEqual("Task One");
-            expect(table.itemIds()).toEqual(["1", "2", "3"]);
+            expect(table.ids()).toEqual(["1", "2", "3"]);
             expect(table.items().length).toEqual(3);
         });
 
-        test("set and get - custom equality", () => {
-            table = new Table<ITask>({ equals: (task1, task2) => task1.title === task2.title });
-            const task = { title: "Task One" };
-            expect(table.set("1", task)).toBe(true);
-            expect(table.set("1", task)).toBe(false); // No-op
-            expect(table.set("1", task)).toBe(false); // No-op
-
-            expect(table.get("1")?.title).toEqual(task.title);
-            table.set("1", {
-                title: "Task One Updated",
-            });
-            expect(table.get("1")?.title).toEqual("Task One Updated");
-
-            table.set("1", null); // Should remove the item
-            expect(table.get("1")).toBeNull();
+        it("should return null for non-existent items", () => {
+            const table = new Table<ITask>();
+            expect(table.get("non-existent")).toBeNull();
         });
 
-        test("delete", () => {
+        it("should delete items when set to null", () => {
+            const table = new Table<ITask>();
             table.set("1", { title: "Task One" });
-            expect(table.delete("1")).toBe(true);
-            expect(table.delete("1")).toBe(false); // No-op
-            expect(table.delete("1")).toBe(false); // No-op
+            table.set("1", null); // Delete item
 
             expect(table.get("1")).toBeNull();
         });
 
-        test("runBatch", () => {
-            table = new Table<ITask>({ equals: (task1, task2) => task1.title === task2.title });
+        it("should return all items", () => {
+            const table = new Table<ITask>();
+            table.set("1", { title: "Task One" });
+            table.set("2", { title: "Task Two" });
+
+            const allItems = table.items();
+            expect(allItems.length).toBe(2);
+            expect(allItems).toEqual(
+                expect.arrayContaining([{ title: "Task One" }, { title: "Task Two" }]),
+            );
+        });
+
+        it("should return all ids", () => {
+            const table = new Table<ITask>();
+            table.set("1", { title: "Task One" });
+            table.set("2", { title: "Task Two" });
+
+            expect(table.ids()).toEqual(["1", "2"]);
+        });
+
+        it("should handle batch operations", () => {
+            const table = new Table<ITask>();
 
             let changed = table.batch((t) => {
                 t.set("1", { title: "Task One*" });
                 t.set("2", { title: "Task Two*" });
-                t.delete("3");
+                t.set("3", null);
                 t.set("4", { title: "Task Four*" });
             });
 
@@ -74,726 +72,16 @@ describe("Table - Unit Tests", () => {
             changed = table.batch((t) => {
                 t.set("1", { title: "Task One*" });
                 t.set("2", { title: "Task Two*" });
-                t.delete("3");
+                t.set("3", null);
                 t.set("4", { title: "Task Four*" });
             });
-            expect(changed).toBe(false);
-        });
-
-        test("refresh", () => {
-            table.set("1", { title: "Task One", priority: 1 });
-            table.set("2", { title: "Task Two", priority: 2 });
-            table.set("3", { title: "Task Three", priority: 3 });
-            table.set("4", { title: "Task Four", priority: 4 });
-
-            // Apply a filter that uses an array external to the table to determine inclusion
-            const titlesToInclude: string[] = [];
-            table.filter((item) => titlesToInclude.includes(item.title!));
-
-            // No items should be included initially
-            expect(table.itemIds()).toEqual([]);
-
-            // Add titles to include and refresh items
-            titlesToInclude.push("Task One", "Task Four");
-
-            // Because the filter was updated externally, still no item would be included
-            expect(table.itemIds()).toEqual([]);
-
-            // Refresh items to re-evaluate the filter
-            table.refresh("1");
-
-            // Only the refreshed item should be included if it meets the filter criteria
-            expect(table.itemIds()).toEqual(["1"]);
-
-            table.refresh("2");
-            table.refresh("3");
-            table.refresh("4");
-            expect(table.itemIds()).toEqual(["1", "4"]);
-        });
-    });
-
-    describe("View", () => {
-        beforeEach(() => {
-            table.set("1", { title: "Short", priority: 3 });
-            table.set("2", { title: "A bit longer" });
-            table.set("3", { title: "This is a very long title indeed", priority: 0 });
-            table.set("4", { title: "Medium length", priority: 2 });
-        });
-
-        test("empty table - should be no-op", () => {
-            const table = new Table<ITask>();
-
-            expect(table.items().length).toBe(0);
-
-            table.filter((item) => (item.priority ?? 0) >= 2);
-            table.sort((a, b) => (a.title.length > b.title.length ? 1 : -1));
-
-            expect(table.items().length).toBe(0);
-        });
-
-        test("Filtering", () => {
-            // Apply a filter to the table
-            table.filter((item) => (item.priority ?? 0) >= 2);
-
-            // View should honour the comparator and filter
-            expect(table.itemIds().sort()).toEqual(["1", "4"].sort());
-
-            // Apply a new filter that is more lenient
-            table.filter((item) => item.priority !== undefined);
-            expect(table.itemIds().sort()).toEqual(["1", "3", "4"].sort());
-
-            // Make table updates
-            table.set("4", { title: "M" });
-            table.set("5", { title: "New Task", priority: 1 });
-
-            // The view should reflect the update
-            expect(table.itemIds().sort()).toEqual(["1", "3", "5"].sort());
-
-            // Remove the filter
-            table.filter(null);
-            expect(table.itemIds().sort()).toEqual(["1", "2", "3", "4", "5"].sort());
-        });
-
-        test("Ordering", () => {
-            // Table should be ordered by title length
-            table.sort((a, b) => (a.title.length > b.title.length ? 1 : -1));
-
-            // The view should reflect the ordering
-            expect(table.itemIds()).toEqual(["1", "2", "4", "3"]);
-
-            // Apply a new comparator that sorts by title alphabetically
-            table.sort((a, b) => a.title.localeCompare(b.title));
-            expect(table.itemIds()).toEqual(["2", "4", "1", "3"]);
-
-            // Make table updates
-            table.set("4", { title: "Z" });
-            table.set("5", { title: "New Task", priority: 1 });
-            table.set("6", { title: "A Task", priority: 1 });
-
-            expect(table.itemIds()).toEqual(["2", "6", "5", "1", "3", "4"]);
-
-            // Remove the comparator
-            table.sort(null);
-            expect(table.itemIds().sort()).toEqual(["1", "2", "3", "4", "5", "6"].sort());
-        });
-
-        test("Combined filter and ordering", () => {
-            table.filter((item) => (item.priority ?? 0) >= 2);
-            table.sort((a, b) => a.title.localeCompare(b.title));
-
-            // The table should be filtered and ordered
-            expect(table.itemIds()).toEqual(["4", "1"]);
-
-            // Make table updates
-            table.set("4", { title: "M" });
-            table.set("5", { title: "ZZZZZ", priority: 3 });
-
-            // The table should reflect the update
-            expect(table.itemIds()).toEqual(["1", "5"]);
-
-            // Apply a new filter that allows all items
-            table.filter((_) => true);
-            expect(table.itemIds()).toEqual(["2", "4", "1", "3", "5"]);
-        });
-
-        test("Filter/Sort at parent node - with index/partition specific behavior", () => {
-            table.indexBy("planView", () => "planView");
-            const viewPartition = table.bucket("planView").partition("planView");
-
-            viewPartition.indexBy("A", (item) => item.planId);
-            viewPartition.indexBy("A-Inverse", (item) => item.planId);
-            const viewFilter = (task: ITask, path: string[]) => {
-                const index = path.at(-2);
-                const planId = path.at(-1);
-                switch (planId) {
-                    case "p1":
-                    case "p2":
-                        return index === "A"
-                            ? task.title!.endsWith(planId)
-                            : !task.title!.endsWith(planId);
-                    case "p3":
-                        return index === "A" ? task.title!.length === 1 : task.title!.length !== 1;
-                    default:
-                        return true;
-                }
-            };
-            const viewComparator = (task1: ITask, task2: ITask, path: string[]) => {
-                const index = path.at(-2);
-                const planId = path.at(-1);
-                switch (planId) {
-                    case "p1":
-                        return index === "A"
-                            ? task1.title!.localeCompare(task2.title!)
-                            : task2.title!.localeCompare(task1.title!);
-                    case "p2":
-                        return index === "A"
-                            ? task2.title!.localeCompare(task1.title!)
-                            : task1.title!.localeCompare(task2.title!);
-                    case "p3":
-                    default:
-                        return 0; // No specific sorting for p3
-                }
-            };
-
-            viewPartition.filter(viewFilter);
-            viewPartition.sort(viewComparator);
-
-            table.set("1", { planId: "p1", title: "A - p1" });
-            table.set("2", { planId: "p1", title: "B - p1" });
-            table.set("3", { planId: "p1", title: "C" }); // Does not meet filter criteria for p1
-
-            table.set("4", { planId: "p2", title: "D - p2" });
-            table.set("5", { planId: "p2", title: "E" }); // Does not meet filter criteria for p2
-            table.set("6", { planId: "p2", title: "F - p2" });
-
-            table.set("7", { planId: "p3", title: "J" });
-            table.set("8", { planId: "p3", title: "H" });
-            table.set("9", { planId: "p3", title: "I" });
-            table.set("10", { planId: "p3", title: "G1" });
-            table.set("11", { planId: "p3", title: "K" });
-
-            const plan1ViewPartitionA = viewPartition.bucket("A").partition("p1");
-            const plan2ViewPartitionA = viewPartition.bucket("A").partition("p2");
-            const plan3ViewPartitionA = viewPartition.bucket("A").partition("p3");
-            const plan1ViewPartitionAInverse = viewPartition.bucket("A-Inverse").partition("p1");
-            const plan2ViewPartitionAInverse = viewPartition.bucket("A-Inverse").partition("p2");
-            const plan3ViewPartitionAInverse = viewPartition.bucket("A-Inverse").partition("p3");
-
-            expect(plan1ViewPartitionA.itemIds()).toEqual(["1", "2"]); // Filtered and sorted by title ascending
-            expect(plan2ViewPartitionA.itemIds()).toEqual(["6", "4"]); // Filtered and sorted by title descending
-            expect(plan3ViewPartitionA.itemIds().sort()).toEqual(["7", "8", "9", "11"].sort()); // Only filter applied
-
-            // Assert Inverse filter and sort applied on A Inverse
-            expect(plan1ViewPartitionAInverse.itemIds()).toEqual(["3"]);
-            expect(plan2ViewPartitionAInverse.itemIds()).toEqual(["5"]);
-            expect(plan3ViewPartitionAInverse.itemIds()).toEqual(["10"]);
-
-            // Apply a filter comparator at table level
-            table.filter((task) => task.title!.length === 1);
-            table.sort((a, b) => a.title!.localeCompare(b.title!));
-
-            // All partitions should reflect the table level filter and sort
-            expect(plan1ViewPartitionA.itemIds()).toEqual(["3"]);
-            expect(plan2ViewPartitionA.itemIds()).toEqual(["5"]);
-            expect(plan3ViewPartitionA.itemIds()).toEqual(["8", "9", "7", "11"]);
-            expect(plan1ViewPartitionAInverse.itemIds()).toEqual(["3"]);
-            expect(plan2ViewPartitionAInverse.itemIds()).toEqual(["5"]);
-            expect(plan3ViewPartitionAInverse.itemIds()).toEqual(["8", "9", "7", "11"]);
-        });
-
-        test("applyFilter > registerIndex > removeFilter", () => {
-            table = new Table<ITask>();
-
-            table.set("1", { title: "Task One", priority: 1 });
-            table.set("2", { title: "Task Two", priority: 0 });
-            table.set("3", { title: "Task Three", priority: 2 });
-            table.set("4", { title: "Task Four" });
-
-            // Apply a filter to the table which does not have any index yet
-            table.filter((item) => (item.priority ?? 0) >= 1);
-
-            // Now register an index
-            table.indexBy("title", (item) => item.title);
-
-            // New index partitions should honor the applied filter
-            const index = table.bucket("title");
-            expect(index.partition("Task One").itemIds()).toEqual(["1"]);
-            expect(index.partition("Task Two").itemIds()).toEqual([]);
-            expect(index.partition("Task Three").itemIds()).toEqual(["3"]);
-            expect(index.partition("Task Four").itemIds()).toEqual([]);
-
-            // Now remove the filter
-            table.filter(null);
-
-            // The index partitions should reflect the removal of the filter
-            expect(index.partition("Task One").itemIds()).toEqual(["1"]);
-            expect(index.partition("Task Two").itemIds()).toEqual(["2"]);
-            expect(index.partition("Task Three").itemIds()).toEqual(["3"]);
-            expect(index.partition("Task Four").itemIds()).toEqual(["4"]);
-        });
-
-        test("refreshView", () => {
-            const viewConfig = { minPriority: 2, sortByPriorityAsc: true };
-
-            table.filter(
-                (item) => item.priority !== undefined && item.priority >= viewConfig.minPriority,
-            );
-            table.sort((a, b) => {
-                if (viewConfig.sortByPriorityAsc) {
-                    return (a.priority ?? 0) - (b.priority ?? 0);
-                }
-                return (b.priority ?? 0) - (a.priority ?? 0);
-            });
-
-            expect(table.itemIds()).toEqual(["4", "1"]);
-
-            // Change view config
-            viewConfig.minPriority = 0;
-            viewConfig.sortByPriorityAsc = false;
-
-            // Because the filter and comparator were updated externally, still no change in view
-            expect(table.itemIds()).toEqual(["4", "1"]);
-
-            // Refresh the view to re-evaluate filter and comparator
-            table.refreshView();
-
-            expect(table.itemIds()).toEqual(["1", "4", "3"]);
-        });
-
-        test("filter removal while comparator is applied", () => {
-            table.filter((item) => (item.priority ?? 0) >= 2);
-            table.sort((a, b) => a.title.localeCompare(b.title));
-
-            // The table should be filtered and ordered
-            expect(table.itemIds()).toEqual(["4", "1"]);
-
-            table.filter(null);
-            expect(table.itemIds().sort()).toEqual(["1", "2", "3", "4"].sort());
-        });
-
-        test("comparator removal while filter is applied", () => {
-            table.sort((a, b) => a.title.localeCompare(b.title));
-            table.filter((item) => (item.priority ?? 0) >= 2);
-
-            // The table should be ordered and filtered
-            expect(table.itemIds()).toEqual(["4", "1"]);
-
-            table.sort(null);
-            expect(table.itemIds().sort()).toEqual(["1", "4"].sort());
-        });
-    });
-
-    describe("Indexing", () => {
-        beforeEach(() => {
-            table = new Table<ITask>();
-            table.indexBy("title", (item) => item.title);
-            table.indexBy("plan", (item) => item.planId ?? "default");
-            table.indexBy("priority", (item) => (item.priority ? item.priority.toString() : null));
-            table.indexBy("tags", (item) => item.tags ?? null);
-            table.indexBy("description", (item) =>
-                (item.description ?? "").length > 2 ? "HasDescription" : null,
-            );
-            table.indexBy("isCompleted", (item) => (item.isCompleted ? "completed" : "pending"));
-        });
-
-        test("Correctness for basic unsorted unfiltered indexes", () => {
-            // Add a record
-            let record: ITask = {
-                title: "Important Task",
-                priority: 1,
-                tags: ["urgent", "feature"],
-                description: "This is a detailed description",
-                isCompleted: true,
-            };
-            table.set("1", record);
-
-            expect(table.bucket("title").partition("Important Task").itemIds()).toEqual(["1"]);
-            expect(table.bucket("priority").partition("1").itemIds()).toEqual(["1"]);
-            expect(table.bucket("tags").partition("urgent").itemIds()).toEqual(["1"]);
-            expect(table.bucket("tags").partition("feature").itemIds()).toEqual(["1"]);
-            expect(table.bucket("description").partition("HasDescription").itemIds()).toEqual([
-                "1",
-            ]);
-            expect(table.bucket("isCompleted").partition("completed").itemIds()).toEqual(["1"]);
-
-            // Apply an update
-            record = {
-                title: "Updated Task",
-                priority: 2,
-                tags: ["urgent", "bugfix"],
-                description: "Updated detailed description",
-                isCompleted: false,
-            };
-            table.set("1", record);
-
-            expect(table.bucket("title").partition("Important Task").itemIds()).toEqual([]);
-            expect(table.bucket("title").partition("Updated Task").itemIds()).toEqual(["1"]);
-            expect(table.bucket("priority").partition("1").itemIds()).toEqual([]);
-            expect(table.bucket("priority").partition("2").itemIds()).toEqual(["1"]);
-            expect(table.bucket("tags").partition("urgent").itemIds()).toEqual(["1"]);
-            expect(table.bucket("tags").partition("feature").itemIds()).toEqual([]);
-            expect(table.bucket("tags").partition("bugfix").itemIds()).toEqual(["1"]);
-            expect(table.bucket("description").partition("HasDescription").itemIds()).toEqual([
-                "1",
-            ]);
-            expect(table.bucket("isCompleted").partition("completed").itemIds()).toEqual([]);
-            expect(table.bucket("isCompleted").partition("pending").itemIds()).toEqual(["1"]);
-
-            // Delete the record
-            table.delete("1");
-            expect(table.bucket("title").partition("Updated Task").itemIds()).toEqual([]);
-            expect(table.bucket("priority").partition("2").itemIds()).toEqual([]);
-            expect(table.bucket("tags").partition("urgent").itemIds()).toEqual([]);
-            expect(table.bucket("tags").partition("bugfix").itemIds()).toEqual([]);
-            expect(table.bucket("description").partition("HasDescription").itemIds()).toEqual([]);
-            expect(table.bucket("isCompleted").partition("pending").itemIds()).toEqual([]);
-        });
-
-        test("Order stability for unsorted indexes", () => {
-            // Add multiple records
-            table.set("1", { title: "T1", planId: "p1" });
-            table.set("2", { title: "T2", planId: "p1" });
-            table.set("3", { title: "T3", planId: "p1" });
-            table.set("4", { title: "W1", planId: "p1" });
-
-            const p1 = table.bucket("plan").partition("p1");
-            // Application of filter should not affect order
-            p1.filter((item) => item.title.startsWith("T"));
-
-            const viewIdsOriginalOrder = p1.itemIds();
-            expect(viewIdsOriginalOrder.sort()).toEqual(["1", "2", "3"].sort());
-
-            // Updates should not change order of unsorted indexes
-            table.set("2", { planId: "p1", title: "T2 Updated" });
-            table.set("3", { planId: "p1", title: "T3 Updated" });
-            expect(p1.itemIds()).toEqual(viewIdsOriginalOrder);
-        });
-
-        test("registerIndex", () => {
-            table.set("1", { title: "Task One", priority: 1 });
-
-            expect(table.indexBy("priority1", (item) => `${item.priority?.toString()}`)).toBe(true);
-            const index = table.bucket("priority1");
-
-            // should create on registration
-            expect(index.partition("1").itemIds()).toEqual(["1"]);
-
-            // try re-register same index with a different definition
-            expect(table.indexBy("priority1", (item) => `${item.priority?.toString()}`)).toBe(
-                false,
-            );
-            const index2 = table.bucket("priority1");
-
-            // The new definition should be ignored and existing index should remain unchanged
-            expect(index2).toBe(index); // Should return the same index
-            expect(index2.partition("1").itemIds()).toEqual(["1"]); // previous definition
-            expect(index2.partition("1*").itemIds()).toEqual([]); // new definition should not take effect
-        });
-
-        test("registerIndex - readonly keys", () => {
-            table.set("1", { title: "Task One", priority: 1 });
-            table.indexBy("priority1", (item) => Object.freeze([`${item.priority?.toString()}`]));
-            const index = table.bucket("priority1");
-
-            // Should create on registration
-            expect(index.partition("1").itemIds()).toEqual(["1"]);
-        });
-
-        test("registerIndex with invalid name", () => {
-            expect(() =>
-                table.indexBy("invalid/////name", (item) => `${item.priority?.toString()}`),
-            ).toThrow();
-        });
-
-        test("registerIndex with invalid partition keys", () => {
-            table.indexBy("test", (item) => item.title);
-
-            expect(() => table.set("1", { title: "Task////One" })).toThrow();
-        });
-
-        test("refreshIndex - non-existent index", () => {
-            expect(() => table.refreshIndex("does-not-exist")).toThrow();
-        });
-
-        test("refreshIndex - existing index", () => {
-            const indexConfig = { priorityCutOff: 1 };
-
-            // An index that references an external config to determine partitioning
-            table.indexBy("custom", (item) =>
-                item.priority && item.priority > indexConfig.priorityCutOff ? "high" : "low",
-            );
-
-            table.set("1", { title: "Task One", priority: 1 });
-            table.set("2", { title: "Task Two", priority: 2 });
-            table.set("3", { title: "Task Three", priority: 3 });
-            table.set("4", { title: "Task Four", priority: 4 });
-            expect(table.bucket("custom").partition("low").itemIds()).toEqual(["1"]);
-            expect(table.bucket("custom").partition("high").itemIds()).toEqual(["2", "3", "4"]);
-
-            // Change index config so that partitioning logic changes
-            indexConfig.priorityCutOff = 3;
-
-            // Partitions should still reflect old logic
-            expect(table.bucket("custom").partition("low").itemIds()).toEqual(["1"]);
-            expect(table.bucket("custom").partition("high").itemIds()).toEqual(["2", "3", "4"]);
-
-            table.refreshIndex("custom");
-
-            // Partitions should now reflect the new logic
-            expect(table.bucket("custom").partition("low").itemIds()).toEqual(["1", "2", "3"]);
-            expect(table.bucket("custom").partition("high").itemIds()).toEqual(["4"]);
-        });
-
-        test("dropIndex", () => {
-            table.set("1", { title: "Task One", priority: 1 });
-            expect(table.bucket("title").keys().length).toBeGreaterThan(0);
-
-            expect(table.dropIndex("title")).toBe(true); // Should drop index and return true
-            expect(table.dropIndex("title")).toBe(false); // No-op, should return false as nothing changed
-        });
-
-        test("Index partition keys", () => {
-            table.set("1", {
-                title: "Important Task",
-                priority: 1,
-                tags: ["urgent", "feature"],
-                description: "D1",
-                isCompleted: true,
-            });
-            table.set("2", {
-                title: "Customer request",
-                priority: 2,
-                tags: ["feature", "backlog"],
-                description: "D2",
-                isCompleted: true,
-            });
-
-            expect(table.bucket("title").keys()).toStrictEqual([
-                "Important Task",
-                "Customer request",
-            ]);
-            expect(table.bucket("priority").keys()).toStrictEqual(["1", "2"]);
-            expect(table.bucket("tags").keys()).toStrictEqual(["urgent", "feature", "backlog"]);
-        });
-
-        test("Non-existent index", () => {
-            const invalidIndex = table.bucket("does-not-exist-yet");
-
-            expect(invalidIndex.keys().length).toBe(0);
-            expect(invalidIndex.partition("any").itemIds().length).toBe(0);
-
-            // Should still allow registering index with the name if needed later
-            table.indexBy("does-not-exist-yet", (item) => item.title);
-            table.set("1", { title: "Task One" });
-            expect(table.bucket("does-not-exist-yet").keys().length).toBeGreaterThan(0);
-        });
-    });
-
-    describe("Recursive partitioning", () => {
-        beforeEach(() => {
-            // Add items with different plans, priorities, and completion status
-            table.set("1", {
-                title: "Alice Task",
-                planId: "plan1",
-                priority: 5,
-                isCompleted: false,
-            });
-            table.set("2", { title: "Bob Work", planId: "plan1", priority: 3, isCompleted: true });
-            table.set("3", {
-                title: "Charlie Item",
-                planId: "plan1",
-                priority: 8,
-                isCompleted: false,
-            });
-            table.set("4", {
-                title: "David Task",
-                planId: "plan1",
-                priority: 1,
-                isCompleted: true,
-            });
-            table.set("5", { title: "Eve Work", planId: "plan1", priority: 7, isCompleted: true });
-            table.set("6", {
-                title: "Frank Item",
-                planId: "plan2",
-                priority: 4,
-                isCompleted: true,
-            });
-            table.set("7", {
-                title: "Grace Task",
-                planId: "plan2",
-                priority: 6,
-                isCompleted: false,
-            });
-            table.set("8", {
-                title: "Henry Work",
-                planId: "plan3",
-                priority: 2,
-                isCompleted: true,
-            });
-        });
-
-        test("should allow defining sub-partitions recursively", () => {
-            // Create plan index to partition by plan
-            table.indexBy("plan", (task) => task.planId ?? "default");
-            const planIndex = table.bucket("plan");
-            const plan1Partition = planIndex.partition("plan1");
-            expect(plan1Partition.itemIds().sort()).toEqual(["1", "2", "3", "4", "5"]);
-
-            // Create a sub-partition for high priority tasks
-            plan1Partition.indexBy("highPriority", (task) =>
-                (task.priority ?? 0) >= 5 ? "high" : "low",
-            );
-            const highPriorityIndex = plan1Partition.bucket("highPriority");
-            const highPriorityPartition = highPriorityIndex.partition("high");
-            expect(highPriorityPartition.itemIds().sort()).toEqual(["1", "3", "5"]);
-
-            // Create a sub-partition for completed tasks
-            highPriorityPartition.indexBy("completed", (task) =>
-                task.isCompleted ? "completed" : "pending",
-            );
-            const completedIndex = highPriorityPartition.bucket("completed");
-            const completedPartition = completedIndex.partition("completed");
-            expect(completedPartition.itemIds().sort()).toEqual(["5"]);
-        });
-
-        test("applying a filter/comparator at a partition should apply recursively to all sub-partitions", () => {
-            // Create plan index to partition by plan
-            table.indexBy("plan", (task) => task.planId ?? "default");
-            const planIndex = table.bucket("plan");
-            const plan1Partition = planIndex.partition("plan1");
-
-            // Create two identical partitions for supporting different views
-            plan1Partition.indexBy("view", (_) => ["grid", "board"]);
-            const plan1ViewIndex = plan1Partition.bucket("view");
-            const plan1GridPartition = plan1ViewIndex.partition("grid");
-            const plan1BoardPartition = plan1ViewIndex.partition("board");
-
-            // Create a status partition on the board view
-            plan1BoardPartition.indexBy("status", (task) =>
-                task.isCompleted ? "completed" : "pending",
-            );
-            const plan1BoardStatusIndex = plan1BoardPartition.bucket("status");
-            const plan1BoardCompletedPartition = plan1BoardStatusIndex.partition("completed");
-            const plan1BoardPendingPartition = plan1BoardStatusIndex.partition("pending");
-
-            // Apply a filter at the plan level so that it applies to all views
-            plan1Partition.filter((task) => (task.priority ?? 0) >= 4);
-
-            expect(plan1Partition.itemIds().sort()).toEqual(["1", "3", "5"]);
-            expect(plan1GridPartition.itemIds().sort()).toEqual(["1", "3", "5"]);
-            expect(plan1BoardPartition.itemIds().sort()).toEqual(["1", "3", "5"]);
-            expect(plan1BoardCompletedPartition.itemIds().sort()).toEqual(["5"]);
-            expect(plan1BoardPendingPartition.itemIds().sort()).toEqual(["1", "3"]);
-
-            // Apply different comparators for the grid and board view partitions
-            plan1GridPartition.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-            plan1BoardPartition.sort((a, b) => a.title.localeCompare(b.title));
-
-            expect(plan1GridPartition.itemIds()).toEqual(["3", "5", "1"]); // Should be sorted by priority descending
-            expect(plan1BoardPartition.itemIds()).toEqual(["1", "3", "5"]); // Should be sorted by title alphabetically
-            expect(plan1BoardCompletedPartition.itemIds()).toEqual(["5"]); // Should be sorted by priority descending
-            expect(plan1BoardPendingPartition.itemIds()).toEqual(["1", "3"]); // Should be sorted by title alphabetically
-        });
-
-        test("should inherit filter/comparator from parent partitions automatically", () => {
-            // Create plan index to partition by plan
-            table.indexBy("plan", (task) => task.planId ?? "default");
-            const planIndex = table.bucket("plan");
-            const plan1Partition = planIndex.partition("plan1");
-
-            // Apply a filter at the plan level
-            plan1Partition.filter((task) => !!task.isCompleted);
-            plan1Partition.sort((a, b) => a.title.localeCompare(b.title));
-
-            // Create a priority class partitioning with one partition that has no items
-            plan1Partition.indexBy("priority", (task) =>
-                (task.priority ?? 0) > 0 ? "prioritized" : "not-prioritized",
-            );
-            const plan1PriorityIndex = plan1Partition.bucket("priority");
-            const prioritizedPlan1Partition = plan1PriorityIndex.partition("prioritized");
-            const notPrioritizedPlan1Partition = plan1PriorityIndex.partition("not-prioritized");
-
-            expect(plan1Partition.itemIds()).toEqual(["2", "4", "5"]);
-            expect(prioritizedPlan1Partition.itemIds()).toEqual(["2", "4", "5"]);
-            expect(notPrioritizedPlan1Partition.itemIds()).toEqual([]); // Empty
-
-            // Add some non-prioritized completed tasks to the partition
-            table.set("9", { title: "Non-Prioritized Task", planId: "plan1", isCompleted: true });
-            table.set("10", {
-                title: "Another Non-Prioritized Task",
-                planId: "plan1",
-                isCompleted: true,
-            });
-            table.set("11", { title: "Yet Another Task", planId: "plan1", isCompleted: true });
-
-            expect(plan1Partition.itemIds()).toEqual(["10", "2", "4", "5", "9", "11"]);
-            expect(prioritizedPlan1Partition.itemIds()).toEqual(["2", "4", "5"]);
-            expect(notPrioritizedPlan1Partition.itemIds()).toEqual(["10", "9", "11"]); // should follow parent partition's order
-        });
-    });
-
-    describe("Tracking", () => {
-        beforeEach(() => {
-            table = new Table<ITask>();
-            table.indexBy("title", (task) => task.title);
-        });
-
-        test("should track modified items", () => {
-            table.set("1", { title: "Task One" });
-            table.set("2", { title: "Task Two" });
-
-            const delta = table.nextDelta();
-            expect(delta.length).toBe(2);
-        });
-
-        test("should limit modified items to specified limit", () => {
-            for (let i = 0; i < 100; i++) {
-                table.set(i.toString(), { title: `Task ${i}` });
-            }
-
-            const delta = table.nextDelta(50);
-            expect(delta.length).toBe(50);
-        });
-
-        test("should return all items if no limit is specified", () => {
-            for (let i = 0; i < 100; i++) {
-                table.set(i.toString(), { title: `Task ${i}` });
-            }
-
-            const delta = table.nextDelta();
-            expect(delta.length).toBe(100);
-        });
-
-        test("should reset the batches once they are returned", () => {
-            for (let i = 0; i < 100; i++) {
-                table.set(i.toString(), { title: `Task ${i}` });
-            }
-
-            const delta = table.nextDelta();
-            expect(delta.length).toBe(100);
-
-            const delta2 = table.nextDelta();
-            expect(delta2.length).toBe(0);
-        });
-
-        test("should not track non-existent records", () => {
-            table.delete("1"); // delete non-existent record
-            expect(table.nextDelta().length).toBe(0);
-        });
-
-        test("should correctly track deletions", () => {
-            table.set("1", { title: "Task One" });
-            table.nextDelta(); // Discard the initial batch
-
-            table.delete("1");
-            expect(table.nextDelta()).toEqual(["1"]);
-        });
-
-        test("should track updates during a batch operation", () => {
-            table.set("1", { title: "Task One" });
-            table.set("2", { title: "Task Two" });
-            table.nextDelta(); // Discard the initial batch
-
-            table.batch((t) => {
-                t.set("1", { title: "Updated Task One" });
-                t.delete("2");
-            });
-
-            expect(table.nextDelta().sort()).toEqual(["1", "2"]);
-        });
-
-        test("tracking disabled", () => {
-            table = new Table<ITask>({ track: false }); // Disable tracking
-            table.set("1", { title: "Task One" });
-            table.set("2", { title: "Task Two" });
-
-            expect(table.nextDelta().length).toBe(0);
+            expect(changed).toBe(true);
         });
     });
 
     describe("Subscriptions", () => {
-        test("should notify subscribers on item changes", () => {
-            table = new Table<ITask>();
+        it("should notify subscribers on changes", () => {
+            const table = new Table<ITask>();
 
             const callback = vi.fn();
             table.subscribe(callback);
@@ -805,46 +93,8 @@ describe("Table - Unit Tests", () => {
             expect(callback).toHaveBeenCalledWith(["2"]);
         });
 
-        test("nested subscriptions", () => {
-            table = new Table<ITask>();
-            table.indexBy("plan", (task) => task.planId ?? "default");
-
-            table.set("1", { title: "Task One", planId: "p1" });
-            table.set("2", { title: "Task Two", planId: "p2" });
-
-            const p1Callback = vi.fn();
-            const p2Callback = vi.fn();
-
-            table.bucket("plan").partition("p1").subscribe(p1Callback);
-            table.bucket("plan").partition("p2").subscribe(p2Callback);
-
-            // Update task in p1
-            table.set("1", { title: "Updated Task One", planId: "p1" });
-            expect(p1Callback).toHaveBeenCalledWith(["1"]);
-            expect(p2Callback).not.toHaveBeenCalled();
-
-            // Update task in p2
-            table.set("2", { title: "Updated Task Two", planId: "p2" });
-            expect(p2Callback).toHaveBeenCalledWith(["2"]);
-        });
-
-        test("batch updates notify subscribers once", () => {
-            table = new Table<ITask>();
-
-            const callback = vi.fn();
-            table.subscribe(callback);
-
-            table.batch((t) => {
-                t.set("1", { title: "Task One" });
-                t.set("2", { title: "Task Two" });
-                t.set("3", { title: "Task Three" });
-            });
-
-            expect(callback).toHaveBeenCalledTimes(1);
-        });
-
-        test("unsubscribing from notifications", () => {
-            table = new Table<ITask>();
+        it("should allow unsubscribing", () => {
+            const table = new Table<ITask>();
 
             const callback = vi.fn();
             const unsubscribe = table.subscribe(callback);
@@ -858,91 +108,252 @@ describe("Table - Unit Tests", () => {
             expect(callback).toHaveBeenCalledTimes(1); // No new calls after unsubscribe
         });
 
-        test("view updates - callbacks should be invoked with empty delta", () => {
-            table = new Table<ITask>();
-
-            table.set("1", { title: "Task One", priority: 1 });
-            table.set("2", { title: "Task Two", priority: 3 });
-            table.set("3", { title: "Task Three", priority: 2 });
+        it("should notify with delta after batch operations", () => {
+            const table = new Table<ITask>();
 
             const callback = vi.fn();
             table.subscribe(callback);
 
-            table.filter((task) => (task.priority ?? 0) >= 2);
-            expect(callback).toHaveBeenCalledTimes(1);
-            expect(callback).toHaveBeenCalledWith([]); // Empty delta for view change
+            table.batch((t) => {
+                t.set("1", { title: "Task One" });
+                t.set("2", { title: "Task Two" });
+                t.set("3", { title: "Task Three" });
+            });
 
-            table.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
-            expect(callback).toHaveBeenCalledTimes(2);
-            expect(callback).toHaveBeenCalledWith([]); // Empty delta for view change
+            expect(callback).toHaveBeenCalledTimes(1);
+        });
+
+        it("should notify subscribers on bucket changes", () => {
+            const table = new Table<ICategoryItem>();
+            table.index((item) => item.category);
+
+            table.set("1", { id: "1", category: "A" });
+
+            const bucketA = table.partition("A");
+            const listener = vi.fn();
+            bucketA.subscribe(listener);
+
+            table.set("2", { id: "2", category: "A" });
+            expect(listener).toHaveBeenCalled();
         });
     });
 
-    describe("View materialization", () => {
-        test("default memoization policy", () => {
-            // Materialize terminal partitions
-            table = new Table<ITask>({ memoize: (_, isTerminal) => isTerminal });
+    describe("Sorting", () => {
+        it("should sort items by comparator", () => {
+            const table = new Table<IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+            table.set("3", { name: "Charlie", age: 35 });
 
-            // Register an index so that root isn't terminal
-            table.indexBy("plan", (task) => task.planId ?? "default");
+            table.sort((a, b) => a.age - b.age);
 
-            table.set("1", { title: "Task One", planId: "p1", priority: 1 });
-            table.set("2", { title: "Task Two", planId: "p1", priority: 3 });
-            table.set("3", { title: "Task Three", planId: "p2", priority: 2 });
-
-            // Apply a filter so that terminal partitions are materialized
-            table.filter((task) => (task.priority ?? 0) >= 2);
-
-            // expect terminal partitions to be materialized
-            // HACK: Given the table does not expose materialization state, we check by reference equality
-            expect(table.bucket("plan").partition("p1").itemIds()).toBe(
-                table.bucket("plan").partition("p1").itemIds(),
-            );
-            expect(table.bucket("plan").partition("p2").itemIds()).toBe(
-                table.bucket("plan").partition("p2").itemIds(),
-            );
-
-            // Non-terminal partition should not be materialized
-            expect(table.itemIds()).not.toBe(table.itemIds());
-
-            // Now drop the index, making root terminal
-            table.dropIndex("plan");
-
-            // Root partition should now be materialized
-            expect(table.itemIds()).toBe(table.itemIds());
+            expect(table.ids()).toEqual(["2", "1", "3"]);
         });
 
-        test("custom materialization policy", () => {
-            // Materialize all priority partitions
-            table = new Table<ITask>({
-                memoize: (path) => path.includes("priority"),
+        it("should clear sort when comparator is null", () => {
+            const table = new Table<IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+
+            table.sort((a, b) => a.age - b.age);
+            table.sort(null);
+
+            table.set("0", { name: "Someone", age: 35 });
+
+            // Not a full proof test but will typically be true
+            expect(table.ids().at(-1)).not.toEqual("0");
+        });
+
+        it("should update sorted view when items are modified", () => {
+            const table = new Table<IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+            table.set("3", { name: "Charlie", age: 35 });
+
+            table.sort((a, b) => a.age - b.age);
+            expect(table.ids()).toEqual(["2", "1", "3"]);
+
+            // Update an item to trigger view update
+            table.set("2", { name: "Bob", age: 40 });
+            expect(table.ids()).toEqual(["1", "3", "2"]);
+        });
+
+        it("should handle items removed from sorted view", () => {
+            const table = new Table<IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+            table.set("3", { name: "Charlie", age: 35 });
+
+            table.sort((a, b) => a.age - b.age);
+
+            table.set("2", null); // Delete middle item
+            expect(table.ids()).toEqual(["1", "3"]);
+        });
+
+        it("should handle adding new items to sorted view", () => {
+            const table = new Table<IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("3", { name: "Charlie", age: 35 });
+
+            table.sort((a, b) => a.age - b.age);
+
+            table.set("2", { name: "Bob", age: 25 }); // Add new item
+            expect(table.ids()).toEqual(["2", "1", "3"]);
+        });
+
+        it("should notify listeners when sort is applied", () => {
+            const table = new Table<IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+
+            const listener = vi.fn();
+            table.subscribe(listener);
+
+            table.sort((a, b) => a.age - b.age);
+            expect(listener).toHaveBeenCalledWith([]);
+        });
+
+        it("should notify listeners when sort is cleared", () => {
+            const table = new Table<IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+            table.sort((a, b) => a.age - b.age);
+
+            const listener = vi.fn();
+            table.subscribe(listener);
+
+            table.sort(null);
+            expect(listener).toHaveBeenCalledWith([]);
+        });
+    });
+
+    describe("Indexing", () => {
+        it("should create buckets based on index definition", () => {
+            const table = new Table<ICategoryItem>();
+            table.set("1", { id: "1", category: "A" });
+            table.set("2", { id: "2", category: "B" });
+            table.set("3", { id: "3", category: "A" });
+
+            table.index((item) => item.category);
+
+            expect(table.partitions()).toContain("A");
+            expect(table.partitions()).toContain("B");
+            expect(table.partition("A").ids()).toEqual(["1", "3"]);
+            expect(table.partition("B").ids()).toEqual(["2"]);
+        });
+
+        it("should update buckets when items change", () => {
+            const table = new Table<ICategoryItem>();
+            table.index((item) => item.category);
+
+            table.set("1", { id: "1", category: "A" });
+            expect(table.partition("A").ids()).toEqual(["1"]);
+
+            table.set("1", { id: "1", category: "B" });
+            expect(table.partition("A").ids()).toEqual([]);
+            expect(table.partition("B").ids()).toEqual(["1"]);
+        });
+
+        it("should support multi-value index definitions", () => {
+            const table = new Table<{ id: string; tags: string[] }>();
+            table.index((item) => item.tags);
+
+            table.set("1", { id: "1", tags: ["red", "blue"] });
+            table.set("2", { id: "2", tags: ["blue", "green"] });
+
+            expect(table.partition("red").ids()).toEqual(["1"]);
+            expect(table.partition("blue").ids()).toEqual(["1", "2"]);
+            expect(table.partition("green").ids()).toEqual(["2"]);
+        });
+
+        it("should clear index when definition is null", () => {
+            const table = new Table<ICategoryItem>();
+            table.set("1", { id: "1", category: "A" });
+            table.index((item) => item.category);
+
+            expect(table.partitions()).toContain("A");
+
+            table.index(null);
+            expect(table.partitions()).toEqual([]);
+        });
+
+        it("should return empty table for non-existent bucket", () => {
+            const table = new Table<ICategoryItem>();
+            table.index((item) => item.category);
+
+            const bucket = table.partition("NonExistent");
+            expect(bucket.ids()).toEqual([]);
+        });
+
+        it("should handle null items in index definition", () => {
+            const table = new Table<ICategoryItem>();
+            table.index((item) => item.category);
+
+            table.set("1", { id: "1", category: "A" });
+            expect(table.partition("A").ids()).toEqual(["1"]);
+
+            table.set("1", null);
+            expect(table.partition("A").ids()).toEqual([]);
+        });
+
+        it("should handle undefined return from index definition", () => {
+            const table = new Table<{ id: string; category?: string }>();
+            table.index((item) => item.category);
+
+            table.set("1", { id: "1" }); // No category
+            table.set("2", { id: "2", category: "A" });
+
+            expect(table.partitions()).toEqual(["A"]);
+            expect(table.partition("A").ids()).toEqual(["2"]);
+        });
+
+        it("should handle null return from index definition", () => {
+            const table = new Table<{ id: string; category: string | null }>();
+            table.index((item) => item.category ?? undefined);
+
+            table.set("1", { id: "1", category: null });
+            table.set("2", { id: "2", category: "A" });
+
+            expect(table.partitions()).toEqual(["A"]);
+        });
+
+        it("should auto-create buckets on first access", () => {
+            const table = new Table<{ id: string; category: string }>();
+            table.index((item) => item.category);
+
+            expect(table.partitions()).toEqual([]);
+
+            table.set("1", { id: "1", category: "A" });
+            expect(table.partitions()).toContain("A");
+            expect(table.partition("A").ids()).toEqual(["1"]);
+        });
+
+        it("should handle batch updates with indexing", () => {
+            const table = new Table<ICategoryItem>();
+            table.index((item) => item.category);
+
+            table.batch((t) => {
+                t.set("1", { id: "1", category: "A" });
+                t.set("2", { id: "2", category: "A" });
+                t.set("3", { id: "3", category: "B" });
             });
 
-            table.indexBy("plan", (task) => task.planId ?? "default"); // should not be materialized
-            table.indexBy("priority", (task) => `${task.priority ?? 0}`); // should be materialized
+            expect(table.partition("A").ids()).toEqual(["1", "2"]);
+            expect(table.partition("B").ids()).toEqual(["3"]);
+        });
 
-            table.set("1", { title: "Task One", planId: "p1", priority: 3 });
-            table.set("2", { title: "Task Two", planId: "p1", priority: 2 });
-            table.set("3", { title: "Task Three", planId: "p2", priority: 2 });
+        it("should handle removing items from multi-value index", () => {
+            const table = new Table<{ id: string; tags: string[] }>();
+            table.index((item) => item.tags);
 
-            // Apply a filter so that priority partitions are materialized
-            table.filter((task) => (task.priority ?? 0) >= 2);
+            table.set("1", { id: "1", tags: ["red", "blue"] });
+            expect(table.partition("red").ids()).toEqual(["1"]);
+            expect(table.partition("blue").ids()).toEqual(["1"]);
 
-            // Expect priority partitions to be materialized
-            expect(table.bucket("priority").partition("2").itemIds()).toBe(
-                table.bucket("priority").partition("2").itemIds(),
-            );
-            expect(table.bucket("priority").partition("3").itemIds()).toBe(
-                table.bucket("priority").partition("3").itemIds(),
-            );
-
-            // Non-priority partitions should not be materialized
-            expect(table.bucket("plan").partition("p1").itemIds()).not.toBe(
-                table.bucket("plan").partition("p1").itemIds(),
-            );
-            expect(table.bucket("plan").partition("p2").itemIds()).not.toBe(
-                table.bucket("plan").partition("p2").itemIds(),
-            );
+            table.set("1", { id: "1", tags: ["green"] });
+            expect(table.partition("red").ids()).toEqual([]);
+            expect(table.partition("blue").ids()).toEqual([]);
+            expect(table.partition("green").ids()).toEqual(["1"]);
         });
     });
 });

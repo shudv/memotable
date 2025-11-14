@@ -92,7 +92,7 @@ describe("useTable", () => {
         expect(renderCount).toBe(initialCount + 1);
     });
 
-    test("triggers re-render on applying filter or comparator", () => {
+    test("triggers re-render on applying sort", () => {
         let renderCount = 0;
 
         renderHook(() => {
@@ -103,15 +103,9 @@ describe("useTable", () => {
         const initialCount = renderCount;
 
         act(() => {
-            table.filter((item) => item.completed === false);
-        });
-
-        expect(renderCount).toBe(initialCount + 1);
-
-        act(() => {
             table.sort((a, b) => a.title.localeCompare(b.title));
         });
 
-        expect(renderCount).toBe(initialCount + 2);
+        expect(renderCount).toBe(initialCount + 1);
     });
 });

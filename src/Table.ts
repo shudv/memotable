@@ -1,28 +1,14 @@
 import { ITable } from "./contracts/ITable";
 import { IComparator } from "./contracts/ISortableTable";
 import { IIndexDefinition } from "./contracts/IIndexableTable";
-import { IDelta } from "./contracts/IDeltaTrackedTable";
-import { ITableConfig } from "./contracts/ITableConfig";
+import { IDelta } from "./contracts/ITrackedTable";
 import { IReadOnlyTable } from "./contracts/IReadOnlyTable";
 
 /**
- * Table implementation that supports basic CRUD, batching, indexing, views and change tracking
+ * Table implementation that supports basic CRUD, batching, indexing and sorting.
+ * @template T Type of the items in the table
  */
 export class Table<T> implements ITable<T> {
-    // Table configuration with defaults
-    private readonly _config: ITableConfig<T> = {
-        equals: (item1: T, item2: T) => item1 === item2, // Default equality check
-        track: true, // Delta tracking enabled by default
-    };
-
-    /**
-     * Create a new Table
-     * @param configOverrides Partial table configuration to override defaults
-     */
-    public constructor(configOverrides: Partial<ITableConfig<T>> = {}) {
-        this._config = { ...this._config, ...configOverrides };
-    }
-
     // #region BASIC OPERATIONS
 
     // All the items in the table
@@ -45,30 +31,15 @@ export class Table<T> implements ITable<T> {
     }
 
     public set(id: string, value: T | null) {
-        // Step 1: Check if the item needs to be updated
-        const currentValue = this.get(id);
-        if (
-            (currentValue === null && value === null) ||
-            (currentValue !== null && value !== null && this._config.equals(currentValue, value))
-        ) {
-            return false;
-        }
-
-        // Step 2: Update the item in the table
-        if (value !== null) {
+        // Step 1: Update the item in the table
+        if (value != null) {
             this._items[id] = value;
         } else {
             delete this._items[id];
         }
 
-        // Step 3: Propagate changes to derived structures (index, view, subscribers)
+        // Step 2: Propagate changes to derived structures (index, sorting, subscribers)
         this._propagateChanges([id]);
-
-        // Step 4: Flag the item as modified
-        if (this._config.track) {
-            this._modifiedIds.add(id);
-        }
-
         return true;
     }
 
@@ -106,7 +77,7 @@ export class Table<T> implements ITable<T> {
 
     // #endregion
 
-    // #region VIEW
+    // #region SORTING
 
     // The materialized view of the table that satisfies the current filter and comparator
     private _sorted: string[] | null = null;
@@ -115,15 +86,14 @@ export class Table<T> implements ITable<T> {
     public sort(comparator: IComparator<T> | null) {
         this._comparator = comparator;
 
-        // Materialize the view if needed
-        if (!this._sorted && this._comparator) {
-            this._sorted = this.ids();
+        for (const bucket of Object.values(this._partitions)) {
+            bucket.sort(comparator);
         }
 
-        // OR Unmaterialize the view if it is no longer needed
-        if (this._sorted && !this._comparator) {
-            this._sorted = null;
-        }
+        this._sorted =
+            comparator && this.partitions().length === 0
+                ? this.ids().sort((id1, id2) => comparator(this._items[id1]!, this._items[id2]!))
+                : null;
 
         this._notifyListeners([]);
     }
@@ -137,77 +107,46 @@ export class Table<T> implements ITable<T> {
      * Example index: { "plan": (task => task.planId) }
      * Example partition key map: { "task1": { "plan": ["plan1"] }, "task2": { "plan": ["plan2"] } }
      */
-    public _definition: ((item: T | null) => readonly string[]) | null = null;
+    public _definition: ((item: T | null | undefined) => readonly string[]) | null = null;
 
     /** All partitions for this index */
-    private _buckets: Record<string, ITable<T>> = {};
-    private _bucketValues: Record<string, string[]> = {};
+    private _partitions: Record<string, ITable<T>> = {};
+    private _partitionKeys: Record<string, readonly string[]> = {};
 
-    public bucket(value: string): IReadOnlyTable<T> {
-        const table = this._buckets[value];
-        if (!table) {
-            /**
-             * Return a dummy empty unregistered index. We could also throw an exception here but we do not
-             * want to risk the caller (typically in a render loop) crashing in case of a temporary misconfiguration.
-             */
-            return new Table();
-        }
-
-        return table;
+    public partition(value: string): IReadOnlyTable<T> {
+        return this._partitions[value] ?? new Table<T>();
     }
 
-    public buckets(): string[] {
-        return Object.keys(this._buckets);
+    public partitions(): string[] {
+        return Object.keys(this._partitions);
     }
 
-    public indexBy(definition: IIndexDefinition<T> | null) {
-        if (!definition) {
+    public index(definition: IIndexDefinition<T> | null) {
+        if (definition == null) {
             this._definition = null;
-            this._buckets = {};
-            this._bucketValues = {};
+            this._partitions = {};
+            this._partitionKeys = {};
             return;
         }
 
         // Normalize the definition
-        this._definition = (item: T | null) => {
+        this._definition = (item: T | null | undefined) => {
             if (!item) {
                 return [] as readonly string[];
             }
 
             const keyOrKeys = definition(item);
-            if (!keyOrKeys) {
+            // also covers undefined
+            if (keyOrKeys == null) {
                 return [] as readonly string[];
             }
 
-            if (Array.isArray(keyOrKeys)) {
-                return keyOrKeys as readonly string[];
-            } else {
-                return [keyOrKeys] as readonly string[];
-            }
+            return Array.isArray(keyOrKeys)
+                ? (keyOrKeys as readonly string[])
+                : ([keyOrKeys] as readonly string[]);
         };
 
         this._applyIndexUpdate(this.ids()); // Build index membership for all existing items
-    }
-
-    // #endregion
-
-    // #region TRACKING
-
-    // Set of ids that have been modified in-memory
-    private readonly _modifiedIds = new Set<string>();
-
-    public nextDelta(maxItems?: number): string[] {
-        const delta: string[] = [];
-        let count = 0;
-
-        for (const id of this._modifiedIds) {
-            delta.push(id);
-            this._modifiedIds.delete(id); // safe during iteration in JS
-
-            if (maxItems && ++count >= maxItems) break;
-        }
-
-        return delta;
     }
 
     // #endregion
@@ -242,30 +181,33 @@ export class Table<T> implements ITable<T> {
      * @param updatedIds Array of ids for which index membership needs to be recalculated
      * @param indexNames Array of index names to update. Defaults to all indexes.
      */
-    private _applyIndexUpdate(updatedIds: string[]): void {
+    private _applyIndexUpdate(updatedIds: string[]) {
         // Step 1: Calculate update batches for all partitions for given id's
-        const batch: Record<string, Record<string, T | null>> = {};
+        const batches: Record<string, Record<string, T | null>> = {};
         for (const id of updatedIds) {
-            const current = this._bucketValues[id] ?? [];
-            const target = this._definition ? this._definition(this.get(id)) : [];
+            const current = this._partitionKeys[id] ?? [];
+            const target = this._definition ? this._definition(this._items[id]) : [];
 
             // Remove from all current partitions
-            for (const key of current) {
-                _deepInsert(batch, key, id, null);
+            for (const value of current) {
+                _deepInsert(batches, value, id, null);
             }
 
             // Add to all target partitions
-            for (const key of target) {
-                _deepInsert(batch, key, id, this.get(id));
+            for (const value of target) {
+                _deepInsert(batches, value, id, this._items[id]);
             }
 
-            _deepInsert(this._bucketValues, id, target);
+            //this._partitionKeys[id] = target;
+
+            _deepInsert(this._partitionKeys, id, target);
         }
 
         // Step 2: Recursively apply the batch updates to all partitions
-        for (const [value, entries] of Object.entries(batch)) {
-            this._buckets[value]?.batch((t) => {
-                for (const [id, item] of Object.entries(entries)) {
+        for (const [key, batch] of Object.entries(batches)) {
+            this._partitions[key] ??= new Table<T>();
+            this._partitions[key].batch((t) => {
+                for (const [id, item] of Object.entries(batch)) {
                     t.set(id, item);
                 }
             });
@@ -278,52 +220,42 @@ export class Table<T> implements ITable<T> {
      * @param updatedIds Array of ids which have been updated
      */
     private _applyViewUpdate(updatedIds: string[]) {
-        const { _comparator } = this;
-        let { _sorted } = this;
-
-        // If view is not materialized, no action is needed
-        if (!_sorted || !_comparator) {
-            return;
-        }
-
-        // If no comparator is defined, we can just append the new id's to the view
-        // Step 1: Sort the new id's if there are multiple
-        if (updatedIds.length > 1) {
-            updatedIds.sort((id1, id2) => _comparator(this._items[id1]!, this._items[id2]!));
-        }
+        const { _sorted, _comparator } = this;
+        if (!_sorted || !_comparator) return; // No view to update
 
         const updatedIdsSet = new Set(updatedIds);
-        _sorted = _sorted.filter((id) => !updatedIdsSet.has(id)); // Remove updated ids from current view
+        const unchangedIds = _sorted.filter((id) => !updatedIdsSet.has(id));
 
-        // Step 2: Merge the current view and updatedIds one by one, satisfying the order constraint
-        const mergedView = _allocateEmptyArray<string>(_sorted.length);
+        this._sorted = _allocateEmptyArray<string>(_sorted.length);
+
         let i = 0; // Iterator for current view array
         let j = 0; // Iterator for updatedIds array
-        while (i < _sorted.length || j < updatedIds.length) {
+        while (i < unchangedIds.length || j < updatedIds.length) {
             // Pick one id from current view and one from updatedIds array
-            const currentId = i < _sorted.length ? _sorted[i] : null;
+            const unchangedId = i < unchangedIds.length ? unchangedIds[i] : null;
             const newId = j < updatedIds.length ? updatedIds[j] : null;
 
             // Add the id from the existing view if newIds array is empty or it comes before the id from the newIds array
             if (
-                currentId &&
-                (!newId || _comparator(this._items[currentId]!, this._items[newId]!) <= 0)
+                unchangedId &&
+                (!newId ||
+                    !this._items[newId] ||
+                    _comparator(this._items[unchangedId]!, this._items[newId]!) <= 0)
             ) {
-                mergedView.push(currentId);
+                this._sorted.push(unchangedId);
                 i++;
             } else {
-                mergedView.push(newId!);
+                if (this._items[newId!]) this._sorted.push(newId!);
                 j++;
             }
         }
-        return mergedView;
     }
 
     /**
      * Notify all subscribed listeners about the delta of modified ids.
      * @param delta The list of modified item ids
      */
-    private _notifyListeners(delta: IDelta): void {
+    private _notifyListeners(delta: IDelta) {
         for (const listener of this._listeners) {
             listener(delta);
         }

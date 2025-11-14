@@ -1,11 +1,10 @@
-import { IDeltaTrackedTable } from "./IDeltaTrackedTable";
 import { IReadOnlyTable } from "./IReadOnlyTable";
 
 /**
  * Interface for a table that also supports mutation operations on top of basic features.
  * @template T Type of the items in the table
  */
-export interface ITable<T> extends IReadOnlyTable<T>, IDeltaTrackedTable {
+export interface ITable<T> extends IReadOnlyTable<T> {
     /**
      * Set an item in the table
      * @param id Item id

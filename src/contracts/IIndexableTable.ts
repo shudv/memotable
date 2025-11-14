@@ -26,9 +26,9 @@ export interface IIndexableTable<T> {
      *
      * @returns The index with the given name
      */
-    bucket(value: string): IReadOnlyTable<T>;
+    partition(value: string): IReadOnlyTable<T>;
 
-    buckets(): string[];
+    partitions(): string[];
 
     /**
      * Register an index with the given definition if it's not already registered.
@@ -40,5 +40,5 @@ export interface IIndexableTable<T> {
      * @param name The name of the index to register
      * @param definition The definition of the index
      */
-    indexBy(definition: IIndexDefinition<T> | null): void;
+    index(definition: IIndexDefinition<T> | null): void;
 }

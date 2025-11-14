@@ -143,37 +143,44 @@ class VanillaImplementation {
 // Scenario 2: Table-based implementations
 // ============================================================================
 
-function setupTableImplementation(): Table<Task> {
+function setupTableImplementationByList(tasks: Task[]): Table<Task> {
     const table = new Table<Task>();
 
-    // Index by list
-    table.indexBy("list", (task) => task.listId);
+    // Index by list - only show incomplete tasks
+    table.index((task) => (task.isCompleted ? undefined : task.listId));
 
-    // Index by importance (for composite "Important" view)
-    table.indexBy("importance", (task) => (task.isImportant ? "important" : undefined));
-
-    // Global filter + comparator that adapts based on partition path
-    table.filter((task, path) => {
-        // If in a list partition, filter by listId and not completed
-        if (path.length > 2 && path.at(-2) === "list") {
-            return task.isCompleted;
+    // Sort by importance + createdAt within each list bucket
+    table.sort((a, b) => {
+        if (a.isImportant !== b.isImportant) {
+            return a.isImportant ? -1 : 1;
         }
-
-        return true; // Default: include all
+        return b.createdAt - a.createdAt;
     });
 
-    // Global comparator that adapts based on partition path
-    table.sort((a, b, path) => {
-        // If in a list partition, sort by importance + createdAt
-        if (path.length > 2 && path.at(-2) === "list") {
-            if (a.isImportant !== b.isImportant) {
-                return a.isImportant ? -1 : 1;
-            }
-            return b.createdAt - a.createdAt;
+    // Populate the table
+    table.batch((t) => {
+        for (const task of tasks) {
+            t.set(task.id, task);
         }
+    });
 
-        // Default: sort by createdAt
-        return b.createdAt - a.createdAt;
+    return table;
+}
+
+function setupTableImplementationByImportance(tasks: Task[]): Table<Task> {
+    const table = new Table<Task>();
+
+    // Index by importance - only show incomplete important tasks
+    table.index((task) => (task.isImportant && !task.isCompleted ? "important" : undefined));
+
+    // Sort by createdAt
+    table.sort((a, b) => b.createdAt - a.createdAt);
+
+    // Populate the table
+    table.batch((t) => {
+        for (const task of tasks) {
+            t.set(task.id, task);
+        }
     });
 
     return table;
@@ -246,29 +253,50 @@ function benchmarkVanilla(tasks: Task[], config: BenchmarkConfig): BenchmarkResu
 }
 
 function benchmarkMemoTable(tasks: Task[], config: BenchmarkConfig): BenchmarkResult {
-    const table = setupTableImplementation();
-
-    // Benchmark initial load
+    // Create two separate tables - one indexed by list, one by importance
     const loadStart = performance.now();
-    table.batch(() => {
-        for (const task of tasks) {
-            table.set(task.id, task);
-        }
-    });
+    const tableByList = setupTableImplementationByList(tasks);
+    const tableByImportance = setupTableImplementationByImportance(tasks);
     const loadEnd = performance.now();
 
-    // Benchmark edits
+    // Benchmark edits - need to update both tables
     const editStart = performance.now();
-    applyEdits(tasks, config, (id, task) => table.set(id, task));
+    for (let i = 0; i < config.numEdits; i++) {
+        const task = tasks[Math.floor(Math.random() * tasks.length)]!;
+        const editType = Math.random();
+
+        let updatedTask: Task;
+        if (editType < 0.33) {
+            // Toggle completion (impacts filters)
+            updatedTask = {
+                ...task,
+                isCompleted: !task.isCompleted,
+                completedAt: !task.isCompleted ? Date.now() : null,
+            };
+        } else {
+            // Toggle importance (impacts sorting)
+            updatedTask = { ...task, isImportant: !task.isImportant };
+        }
+
+        // Update both tables
+        tableByList.set(task.id, updatedTask);
+        tableByImportance.set(task.id, updatedTask);
+
+        // Update the tasks array for consistency
+        const taskIndex = tasks.findIndex((t) => t.id === task.id);
+        if (taskIndex !== -1) {
+            tasks[taskIndex] = updatedTask;
+        }
+    }
     const editEnd = performance.now();
 
-    // Benchmark reads (track total items read)
+    // Benchmark reads
     const readStart = performance.now();
     for (let i = 0; i < config.numReads; i++) {
         const listId = `list-${Math.floor(Math.random() * config.numLists)}`;
-        table.bucket("list").partition(listId).items();
+        tableByList.partition(listId).items();
         if (i % 10 === 0) {
-            table.bucket("importance").partition("important").items();
+            tableByImportance.partition("important").items();
         }
     }
     const readEnd = performance.now();
