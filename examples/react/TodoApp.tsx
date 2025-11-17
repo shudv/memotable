@@ -23,30 +23,26 @@ function getPartitions(todo: Todo): string[] {
 }
 
 // Create the root table
-const todoTable = new Table<Todo>();
+const todoTable = new Table<string, Todo>();
 
 // Register partition index
-todoTable.index("View", (todo) => getPartitions(todo));
+todoTable.index((todo) => getPartitions(todo));
 
-// Apply filter with sorting logic
-todoTable.sort((a, b) => {
-    if (path.length > 1 && path.at(-1) === "Important") {
-        // not root
-        return a.dueDate.getTime() - b.dueDate.getTime();
-    }
-    // Default: sort by created date
-    return a.createdDate.getTime() - b.createdDate.getTime();
-});
+const partitions = ["List 1", "List 2", "Important"];
+
+// Sort
+todoTable.sort((a, b) => a.createdDate.getTime() - b.createdDate.getTime());
 
 // ListView component
-function ListView({ title, table }: { title: string; table: IReadOnlyTable<Todo> }) {
+function ListView({ title, table }: { title: string; table: IReadOnlyTable<string, Todo> }) {
     useTable(table);
+    console.log(table.keys().length);
 
     return (
         <div style={styles.listView}>
             <h3 style={styles.listViewTitle}>{title}</h3>
             <ul style={styles.listViewList}>
-                {table.items().map((todo) => (
+                {table.values().map((todo) => (
                     <li key={todo.id} style={styles.listViewItem}>
                         <div style={styles.listViewItemTitle}>{todo.title}</div>
                         <div style={styles.listViewItemMeta}>
@@ -57,7 +53,7 @@ function ListView({ title, table }: { title: string; table: IReadOnlyTable<Todo>
                     </li>
                 ))}
             </ul>
-            <div style={styles.listViewCount}>Total: {table.items().length} items</div>
+            <div style={styles.listViewCount}>Total: {table.keys().length} items</div>
         </div>
     );
 }
@@ -72,7 +68,7 @@ export function TodoApp() {
 
         todoTable.set(id, {
             id,
-            title: `Task ${todoTable.items().length + 1}`,
+            title: `Task ${todoTable.values().length + 1}`,
             listId,
             isImportant,
             createdDate: now,
@@ -81,14 +77,14 @@ export function TodoApp() {
     };
 
     const removeTodo = () => {
-        const items = todoTable.items();
+        const items = todoTable.values();
         if (items.length > 0) {
             todoTable.delete(items[items.length - 1].id);
         }
     };
 
     const clearAll = () => {
-        const items = todoTable.items();
+        const items = todoTable.values();
         items.forEach((todo) => todoTable.delete(todo.id));
     };
 
@@ -97,13 +93,21 @@ export function TodoApp() {
         setKeyword(value);
 
         if (value.trim() === "") {
-            todoTable.filter(null);
+            for (const partitionKey of partitions) {
+                todoTable.partition(partitionKey).index(null);
+            }
         } else {
-            todoTable.filter((todo) => todo.title.toLowerCase().includes(value.toLowerCase()));
+            for (const partitionKey of partitions) {
+                todoTable
+                    .partition(partitionKey)
+                    .index((todo) =>
+                        todo.title.toLowerCase().includes(value.toLowerCase())
+                            ? "Filtered"
+                            : undefined,
+                    );
+            }
         }
     };
-
-    const partitions = ["List 1", "List 2", "Important"];
 
     return (
         <div style={styles.container}>
@@ -145,7 +149,7 @@ export function TodoApp() {
                     <ListView
                         key={partitionKey}
                         title={partitionKey}
-                        table={todoTable.partition("View").partition(partitionKey)}
+                        table={todoTable.partition(partitionKey).partition("Filtered")}
                     />
                 ))}
             </div>
