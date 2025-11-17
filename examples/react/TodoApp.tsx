@@ -36,7 +36,6 @@ todoTable.sort((a, b) => a.createdDate.getTime() - b.createdDate.getTime());
 // ListView component
 function ListView({ title, table }: { title: string; table: IReadOnlyTable<string, Todo> }) {
     useTable(table);
-    console.log(table.keys().length);
 
     return (
         <div style={styles.listView}>
