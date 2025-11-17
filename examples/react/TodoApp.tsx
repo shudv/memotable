@@ -29,9 +29,21 @@ const todoTable = new Table<string, Todo>();
 todoTable.index((todo) => getPartitions(todo));
 
 const partitions = ["List 1", "List 2", "Important"];
+// By default, no filtering
+for (const partitionKey of partitions) {
+    todoTable.partition(partitionKey).index((_) => "Filtered");
+}
 
-// Sort
-todoTable.sort((a, b) => a.createdDate.getTime() - b.createdDate.getTime());
+// 2 factor sort so that important tasks come first, then by created date
+todoTable.sort((a, b) => {
+    if (a.isImportant && !b.isImportant) {
+        return -1;
+    } else if (!a.isImportant && b.isImportant) {
+        return 1;
+    } else {
+        return a.createdDate.getTime() - b.createdDate.getTime();
+    }
+});
 
 // ListView component
 function ListView({ title, table }: { title: string; table: IReadOnlyTable<string, Todo> }) {
@@ -91,20 +103,12 @@ export function TodoApp() {
         const value = e.target.value;
         setKeyword(value);
 
-        if (value.trim() === "") {
-            for (const partitionKey of partitions) {
-                todoTable.partition(partitionKey).index(null);
-            }
-        } else {
-            for (const partitionKey of partitions) {
-                todoTable
-                    .partition(partitionKey)
-                    .index((todo) =>
-                        todo.title.toLowerCase().includes(value.toLowerCase())
-                            ? "Filtered"
-                            : undefined,
-                    );
-            }
+        for (const partitionKey of partitions) {
+            todoTable
+                .partition(partitionKey)
+                .index((todo) =>
+                    todo.title.toLowerCase().includes(value.toLowerCase()) ? "Filtered" : undefined,
+                );
         }
     };
 
