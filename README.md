@@ -6,20 +6,17 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Try it live](https://img.shields.io/badge/Try%20it-live-ff69b4)](https://codesandbox.io/p/sandbox/c9lv4v)
 
-**Zero dependencies.** Reactive, indexed and memoized in-memory collections and views — all in **<2 KB**.  
+Reactive, indexed and ordered in-memory keyed collections — all in **<1 KB**.  
 Written in TypeScript with full type definitions. Side-effects free.
 
-> **The correct way to memoize indexed/sorted/filtered collections.**
+> **The correct way to memoize sorted & filtered collections.**
 >
-> Most apps don’t need collection memoization — the DOM is almost always the real bottleneck.  
-> That said, when your data is huge, `memotable` gives you the *correct* memoization primitives.
+> Most web apps don’t need collection memoization. The DOM is almost always the real bottleneck for performance.  
+> That said, when you are processing huge amounts of data (in a web app or otherwise), `memotable` gives you the _correct_ memoization primitives.
 
+## Why memotable?
 
-
-## Why memotable
-
-Most developers reach for `useMemo` (or the equivalent in their framework)
-to cache filtered or sorted lists — but for collections, that pattern is almost always a trap.
+When writing React code, most developers reach for `useMemo` to cache filtered or sorted collections - but that pattern is always a trap.
 
 ```tsx
 function TaskList({ tasks, filter, comparator }) {
@@ -31,27 +28,27 @@ function TaskList({ tasks, filter, comparator }) {
 ```
 
 This has two fundamental problems:
+
 - If you mutate the array in place, `useMemo` can silently return **stale data** because the reference didn’t change.
 - If you recreate the array on every render, you pay **full recomputation cost** every time — so your “optimization” does nothing.
-  
+
 Most of the time, you don’t need to “memoize” collections at all — just recompute them and move on.
-But when you _do_ need to avoid recomputation — say, thousands of items with heavy filter/comparator logic —  
+But when you _do_ need to avoid recomputation — say, thousands of values with heavy filter/comparator logic —  
 you need a structure that’s actually designed for that.
 
 That’s what `memotable` is.
 
 It provides:
 
-- **Incremental updates** — only reprocess changed items.
-- **Recursive indexing** — you can partition, filter, and index views as deeply as needed.
-- **Delta tracking** — access just the changes since last read, useful for syncing.
+- **Recursive indexing** — Index collection as deeply as needed.
+- **Sorting** — Sort at the root or any child node - applies recursively from any node to it's children.
+- **Fine-grained subscriptions** — Subscribe only to the specific partition you are interested in, ignoring other changes.
 
 ## Using memotable
 
 ```tsx
-const taskTable = new Table<Task>(); // Structure defined once
-taskTable.applyFilter(filter); // ✅ Filter applied and maintained incrementally
-taskTable.applyComparator(comparator); // ✅ Comparator applied and maintained incrementally
+const taskTable = new Table<string, Task>(); // Structure defined once
+taskTable.sort(comparator); // ✅ Comparator applied and maintained incrementally
 
 function TaskList({ taskTable }) {
     // ✅ Simpler React component that just renders the data in the table
@@ -68,8 +65,8 @@ function TaskList({ taskTable }) {
 
 **Benefits:**
 
-- **Lighter render passes** – Filters and sorts are applied outside the render loop.
-- **Less re-renders** – A table partition notifies subscribers only when it sees any change (for cases when we have multiple partitions, the example above only has one).
+- **Lighter render passes** – Heavy operations like sorting and indexing are applied outside the render loop.
+- **Less re-renders** – A table partition notifies subscribers only when it sees any change.
 
 ## Quick Start
 
@@ -101,10 +98,7 @@ You _don't_ need it for simple apps.
 ✅ Use it when:
 
 - Your data set is large enough that filtering/sorting frequently can cause visible frame drops (~10ms+).
-- Your data changes frequently (real-time sync, live collaboration, etc.).
-- You need efficient, indexed access for reads.
-- You regularly sync data to a persistent cache (e.g., IndexedDB).
-- You feel uneasy with a lot of code running in render loops, even if it does not show up on performance traces.😊
+- Reads outnumber writes by at least 2-3x.
 
 ## When _not_ to use memotable
 
@@ -123,7 +117,7 @@ It's **not** a full state management system like MobX or Zustand. Instead, it's 
 Memotable uses **partitioned tables** with **incremental propagation** to achieve efficient derived views:
 
 - **Partitioning**: Each index splits data into multiple sub-tables (partitions) based on key extraction. These partitions can themselves be indexed further, creating a recursive tree structure.
-- **Incremental updates**: When items change, only affected partitions recalculate their state. Filters and sorts propagate changes without full re-computation.
+- **Incremental updates**: When values change, only affected partitions recalculate their state. Filters and sorts propagate changes without full re-computation.
 - **Materialized views**: Filtered and sorted results are cached in memory for instant reads. Materialization can be toggled per partition to balance memory usage vs. read performance.
 - **Subscription model**: Fine-grained listeners at any level (root table, index, or partition) receive updates only when their specific view changes.
 
@@ -140,23 +134,9 @@ Scenario: 50,000 tasks with list-based indexing, importance filtering, and two-f
 | Initial load | 89.6ms      | 5.3ms       | 16.9x slower     |
 | 100 edits    | 16.3ms      | 0.1ms       | 153.3x slower    |
 | 500 reads    | 8.5ms       | 306.1ms     | **36.2x faster** |
-| **Total**    | **114.4ms** | **311.6ms** | **2.7x faster**  |
+| **Total**    | **114.4ms** | **311.6ms** | **3.3x faster**  |
 
 _Run `pnpm benchmark` to test on your machine._
-
-### Key insights
-
-**When memotable wins:**
-
-- Read-heavy workloads (read/write ratio > 5:1) — reads are 30–40x faster
-- Frequent queries against the same filtered/sorted views
-- Real-time UIs that re-render on every data change
-
-**When plain JS wins:**
-
-- Initial bulk loading — memotable is ~17x slower due to indexing overhead
-- Write-heavy workloads — each edit is ~150x slower due to incremental updates
-- One-time operations on small datasets (<1000 items)
 
 ## Integrations
 
@@ -169,7 +149,7 @@ import { useTable } from "memotable/react";
 
 function MyComponent({ table }) {
     useTable(table); // Auto-subscribes, triggers re-render on change and cleans up on unmount
-    return <div>{table.items().length} items</div>;
+    return <div>{table.keys().length} values</div>;
 }
 ```
 

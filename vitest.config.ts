@@ -19,7 +19,14 @@ export default defineConfig({
                 lines: 100,
             },
             include: ["src/**/*.{ts,tsx}"],
-            exclude: ["node_modules/", "dist/", "**/*.test.ts", "**/*.config.ts"],
+            exclude: [
+                "node_modules/",
+                "dist/",
+                "**/*.test.ts",
+                "**/*.config.ts",
+                "**/contracts/**",
+                "**/index.{ts,tsx}",
+            ],
         },
 
         // Test file patterns

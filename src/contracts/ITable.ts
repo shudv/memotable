@@ -1,37 +1,42 @@
-import { IDeltaTrackedTable } from "./IDeltaTrackedTable";
 import { IReadOnlyTable } from "./IReadOnlyTable";
 
+// Define a type that includes only the mutation methods of ITable that can be batched
+export type TBatch<K, V> = Pick<ITable<K, V>, "set" | "delete" | "touch">;
+
 /**
- * Interface for a table that also supports mutation operations on top of basic features.
- * @template T Type of the items in the table
+ * Interface for a table that also supports mutation operations on top of existing features.
+ * @template K Type of the keys
+ * @template V Type of the values in the table
  */
-export interface ITable<T> extends IReadOnlyTable<T>, IDeltaTrackedTable {
+export interface ITable<K, V> extends IReadOnlyTable<K, V> {
     /**
-     * Set an item in the table
-     * @param id Item id
+     * Set a value in the table
+     * @param key Item key
      * @param value Item value
      */
-    set(id: string, value: T | null): boolean;
+    set(key: K, value: V): void;
 
     /**
-     * Refresh an item.
+     * Delete a value from the table
+     * @param key Item key
      *
-     * This is needed when an item is either mutated in place or when external
-     * factors affect the derived structures (indexes or views).
-     *
-     * @param id Item id
+     * @returns True if the key was deleted, false if the key was not found
      */
-    refresh(id: string): void;
+    delete(key: K): boolean;
 
     /**
-     * Delete an item from the table
-     * @param id Item id
+     * Touch a value in the table
+     *
+     * This is needed when a value is either mutated in place or when external
+     * factors affect the derived structures (indexes or order).
+     *
+     * @param key Item key
      */
-    delete(id: string): boolean;
+    touch(key: K): void;
 
     /**
      * Run a batch of operations on the table
-     * @param batch Function that receives the table as an argument and performs multiple operations on it
+     * @param fn Function that receives the table as an argument and performs multiple edit operations on it
      */
-    runBatch(batch: (t: ITable<T>) => void): boolean;
+    batch(fn: (t: TBatch<K, V>) => void): void;
 }

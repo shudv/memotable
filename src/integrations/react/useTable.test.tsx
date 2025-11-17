@@ -10,13 +10,13 @@ interface Task {
 }
 
 describe("useTable", () => {
-    let table: Table<Task>;
+    let table: Table<string, Task>;
 
     beforeEach(() => {
-        table = new Table<Task>();
+        table = new Table<string, Task>();
     });
 
-    test("triggers re-render on item update", () => {
+    test("triggers re-render on update", () => {
         let renderCount = 0;
 
         table.set("task-1", { id: "task-1", title: "Original", completed: false });
@@ -35,7 +35,7 @@ describe("useTable", () => {
         expect(renderCount).toBe(initialCount + 1);
     });
 
-    test("triggers re-render on item deletion", () => {
+    test("triggers re-render on deletion", () => {
         let renderCount = 0;
 
         table.set("task-1", { id: "task-1", title: "Test", completed: false });
@@ -48,7 +48,7 @@ describe("useTable", () => {
         const initialCount = renderCount;
 
         act(() => {
-            table.set("task-1", null);
+            table.delete("task-1");
         });
 
         expect(renderCount).toBe(initialCount + 1);
@@ -82,7 +82,7 @@ describe("useTable", () => {
         const initialCount = renderCount;
 
         act(() => {
-            table.runBatch(() => {
+            table.batch(() => {
                 table.set("task-1", { id: "task-1", title: "Task 1", completed: false });
                 table.set("task-2", { id: "task-2", title: "Task 2", completed: false });
                 table.set("task-3", { id: "task-3", title: "Task 3", completed: false });
@@ -92,7 +92,7 @@ describe("useTable", () => {
         expect(renderCount).toBe(initialCount + 1);
     });
 
-    test("triggers re-render on applying filter or comparator", () => {
+    test("triggers re-render on applying sort", () => {
         let renderCount = 0;
 
         renderHook(() => {
@@ -103,15 +103,9 @@ describe("useTable", () => {
         const initialCount = renderCount;
 
         act(() => {
-            table.applyFilter((item) => item.completed === false);
+            table.sort((a, b) => a.title.localeCompare(b.title));
         });
 
         expect(renderCount).toBe(initialCount + 1);
-
-        act(() => {
-            table.applyComparator((a, b) => a.title.localeCompare(b.title));
-        });
-
-        expect(renderCount).toBe(initialCount + 2);
     });
 });

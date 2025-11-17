@@ -1,109 +1,67 @@
-import { ITable } from "./contracts/ITable";
-import { IFilter, IComparator } from "./contracts/IViewTable";
-import { IIndex, IIndexDefinition } from "./contracts/IIndexedTable";
-import { IDelta } from "./contracts/IDeltaTrackedTable";
-import { ITableConfig } from "./contracts/ITableConfig";
+// Contracts
+import { ITable, TBatch } from "./contracts/ITable";
+import { IComparator } from "./contracts/ISortableTable";
+import { IDelta } from "./contracts/IObservableTable";
+import { IIndexDefinition } from "./contracts/IIndexableTable";
+import { IReadOnlyTable } from "./contracts/IReadOnlyTable";
 
 /**
- * A delimiter to separate path tokens in the internal table path naming scheme.
- * This is chosen so that it is unlikely to appear in partition keys.
- *
- * Example: "task////plan////{planId}////bucket////{bucketId}" represents the path to the bucket
- * partition within a task table, partitioned by plan and then bucket. The planId and bucketId
- * values are unlikely to contain the delimiter, hence preserving correctness.
- *
- * Note: The path tokens are supplied to the filter and comparator functions to allow
- * partition-specific filtering and sorting. For example, you can apply a filter on a
- * parent partition that has conditional behavior depending upon the child partition key.
- * Applying comparator/filter on a parent is beneficial because it implicitly applies to all child
- * partitions that get created later dynamically as items are added to the table. Otherwise
- * the filter/comparator would need to be applied to each child partition individually.
+ * Table implementation that supports basic CRUD, batching, indexing and sorting.
+ * @template T Type of the values in the table
  */
-const TablePathDelimiter = "////";
-
-/**
- * Table implementation that supports basic CRUD, batching, indexing, views and change tracking
- */
-export class Table<T> implements ITable<T> {
-    // Table configuration with defaults
-    private readonly _config: ITableConfig<T> = {
-        name: "", // Default empty name
-        isEqual: () => false, // Default equality check always returns false
-        deltaTracking: true, // Delta tracking enabled by default
-        shouldMaterialize: (_, isTerminal) => isTerminal, // Materialize only terminal partitions
-    };
-
-    /**
-     * Create a new Table
-     * @param configOverrides Partial table configuration to override defaults
-     */
-    public constructor(configOverrides: Partial<ITableConfig<T>> = {}) {
-        this._config = { ...this._config, ...configOverrides };
-    }
-
+export class Table<K, V> implements ITable<K, V> {
     // #region BASIC OPERATIONS
 
-    // All the items in the table
-    private _items: Record<string, T> = {};
+    // A map to hold the actual values in the table
+    private _map: Map<K, V> = new Map();
 
     // Flag to indicate if a batch operation is in progress
     private _isBatchOperationInProgress = false;
-    private _idsUpdatedInCurrentBatch = new Set<string>();
+    private _keysUpdatedInCurrentBatch = new Set<K>();
 
-    public get(id: string): T | null {
-        return this._items[id] ?? null;
+    public get(key: K): V | undefined {
+        return this._map.get(key);
     }
 
-    public items(): T[] {
-        return this.itemIds().map((id) => this._items[id]!);
+    public values(): V[] {
+        return this.keys().map((key) => this._map.get(key)!);
     }
 
-    public itemIds(): string[] {
-        if (this._view) {
-            // If the view has already materialized, return it directly (this is super quick and avoids re-computation)
-            return this._view;
-        } else {
-            // If the view has not materialized yet, apply filter and comparator to the items at read time
-            const { _filter, _comparator } = this;
-            const allIds = this._allItemIds();
-            const filteredIds = _filter
-                ? allIds.filter((id) => _filter(this._items[id]!, this._getTablePathTokens()))
-                : allIds;
-            const orderedFilteredIds = _comparator
-                ? filteredIds.sort((id1, id2) =>
-                      _comparator(this._items[id1]!, this._items[id2]!, this._getTablePathTokens()),
-                  )
-                : filteredIds;
-            return orderedFilteredIds;
+    public keys(): K[] {
+        // Return the materialized sorted keys if available, otherwise sort at read time
+        return this._sortedKeys ? this._sortedKeys : this._sortKeys(this._comparator);
+    }
+
+    public set(key: K, value: V): void {
+        this._map.set(key, value);
+        this._propagateChanges([key]);
+    }
+
+    public delete(key: K): boolean {
+        if (!this._map.has(key)) {
+            return false;
         }
+
+        this._map.delete(key);
+        this._propagateChanges([key]);
+        return true;
     }
 
-    public set(id: string, value: T | null): boolean {
-        return this._setInternal(id, value);
+    public touch(key: K) {
+        this._propagateChanges([key]);
     }
 
-    public delete(id: string): boolean {
-        return this._setInternal(id, null);
-    }
-
-    public refresh(id: string) {
-        this._propagateChanges([id]);
-    }
-
-    public runBatch(batch: (t: ITable<T>) => void): boolean {
+    public batch(fn: (t: TBatch<K, V>) => void): void {
         // Step 1: Run the batch of operations and mark start and end to disable change propagation on every set/delete
         this._isBatchOperationInProgress = true;
-        batch(this);
+        fn(this);
         this._isBatchOperationInProgress = false;
 
         // Step 2: After the batch is complete, propagate all accumulated changes
-        if (this._idsUpdatedInCurrentBatch.size > 0) {
-            this._propagateChanges(Array.from(this._idsUpdatedInCurrentBatch));
-            this._idsUpdatedInCurrentBatch.clear();
-            return true;
+        if (this._keysUpdatedInCurrentBatch.size > 0) {
+            this._propagateChanges(Array.from(this._keysUpdatedInCurrentBatch));
+            this._keysUpdatedInCurrentBatch.clear();
         }
-
-        return false;
     }
 
     // #endregion
@@ -111,583 +69,299 @@ export class Table<T> implements ITable<T> {
     // #region SUBSCRIPTIONS
 
     // Set of listeners subscribed to changes in the table
-    private _listeners: Set<(delta: IDelta) => void> = new Set();
+    private _listeners: Set<(delta: IDelta<K>) => void> = new Set();
 
-    public subscribe = (listener: (delta: IDelta) => void): (() => void) => {
+    public subscribe = (listener: (delta: IDelta<K>) => void): (() => void) => {
         this._listeners.add(listener);
         return () => this._listeners.delete(listener);
     };
 
     // #endregion
 
-    // #region VIEW
+    // #region SORTING
 
     // The materialized view of the table that satisfies the current filter and comparator
-    private _view: string[] | null = null;
-    private _filter: IFilter<T> | null = null;
-    private _comparator: IComparator<T> | null = null;
+    private _sortedKeys: K[] | null = null;
+    private _comparator: IComparator<V> | null = null;
 
-    public applyComparator(comparator: IComparator<T> | null) {
+    public sort(comparator: IComparator<V> | null) {
         this._comparator = comparator;
-        const path = this._getTablePathTokens();
 
-        // Step 1: Apply the comparator to all child partitions
-        if (this._hasPartitions()) {
-            for (const partition of this._partitions()) {
-                partition.applyComparator(comparator);
-            }
+        // Step 1: Apply sorting to all partitions
+        for (const partition of Object.values(this._partitions)) {
+            partition.sort(comparator);
         }
 
-        // Step 2: If this node is to be materialized, update the view accordingly
-        if (this._shouldMaterializeView()) {
-            // If the view has already materialized, we need to re-sort it based on the new comparator
-            if (comparator) {
-                this._view = (this._view ?? this.itemIds()).sort((id1, id2) =>
-                    comparator(this._items[id1]!, this._items[id2]!, path),
-                );
-            }
+        // Step 2: Reset current materialized view, if any
+        this._sortedKeys = null;
 
-            // When comparator is removed, but view is still needed to materialized (because of an applied filter), we can keep the view ordered
-            // as per the existing order (no-op). When new items are added later, they will simply be appended to the end of the view.
+        // Step 3: Refresh the materialized view based on the new comparator
+        this._refereshMaterialization();
+
+        // Step 4: Notify listeners about the change in order
+        if (comparator) {
+            this._notifyListeners([]);
         }
-
-        this._refreshViewMaterialization(); // Because comparator might have been removed
-        this._notifyListeners([]); // Notify listeners that a comparator change has occurred (empty delta as no items were modified)
-    }
-
-    /**
-     * Following implementation of applyFilter guarantees O(N + M*log2(M)) time complexity,
-     * where N is the number of current items in the view and M is the number of new items
-     * that need to be added to the view. This is only consequential when N>>M, otherwise
-     * the practical performance is close the naive O(N*log2N) implementation.
-     */
-    public applyFilter(filter: IFilter<T> | null) {
-        this._filter = filter;
-        const path = this._getTablePathTokens();
-
-        // Step 1: If this table has partitions, apply the filter to all child partitions
-        if (this._hasPartitions()) {
-            for (const partition of this._partitions()) {
-                partition.applyFilter(filter);
-            }
-        }
-
-        // Step 2: If this node is to be materialized, update the view accordingly
-        if (this._shouldMaterializeView()) {
-            // Step 1: Apply filter to the current view so that any existing id's in view that do not pass the new filter are removed (also create a set for the next pass))
-            const currentViewSet = new Set<string>();
-            const currentView = this._view ?? []; // already ordered by the current comparator
-            this._view = [];
-            for (const id of currentView) {
-                if (!filter || filter(this._items[id]!, path)) {
-                    currentViewSet.add(id);
-                    this._view.push(id);
-                }
-            }
-
-            // Step 2: Scan the entire table and add the id's not in view that now pass the new filter
-            const newIds: string[] = [];
-            for (const id of this._allItemIds()) {
-                if (!currentViewSet.has(id) && (!filter || filter(this._items[id]!, path))) {
-                    newIds.push(id);
-                }
-            }
-
-            // Step 3: Merge the new id's into the view
-            if (newIds.length > 0) {
-                this._view = this._mergeIntoView(this._view, newIds);
-            }
-        }
-
-        this._refreshViewMaterialization(); // Because filter might have been removed
-        this._notifyListeners([]); // Notify listeners that a filter change has occurred (empty delta as no items were modified)
-    }
-
-    public refreshView(): void {
-        this.applyFilter(this._filter);
-        this.applyComparator(this._comparator);
     }
 
     // #endregion
 
     // #region INDEXING
 
-    /**
-     * The in-memory indexes for this table and a partition key map for each item.
-     * Example index: { "plan": (task => task.planId) }
-     * Example partition key map: { "task1": { "plan": ["plan1"] }, "task2": { "plan": ["plan2"] } }
-     */
-    private readonly _indexes: Record<string, IRuntimeIndex<T>> = {};
-    private readonly _partitionKeys: Record<string, Record<string, string[]>> = {};
+    /** Normalized index accessor function that returns latest partition names a give value should be in */
+    private _indexAccessor: ((value: V | undefined) => readonly string[]) | null = null;
 
-    public index(name: string): IIndex<T> {
-        const index = this._indexes[name];
-        if (!index) {
-            /**
-             * Return a dummy empty unregistered index. We could also throw an exception here but we do not
-             * want to risk the caller (typically in a render loop) crashing in case of a temporary misconfiguration.
-             */
-            return {
-                keys: () => [],
-                partition: () => new Table({ name }),
-            };
+    /** Optional partition initializer function */
+    private _partitionInitializer?: (name: string, partition: IReadOnlyTable<K, V>) => void;
+
+    /** Map of keys to their current partition names (used for diffing against new updates) */
+    private _partitionNames: Map<K, readonly string[]> = new Map();
+
+    /** All partitions created by this index */
+    private _partitions: Record<string, ITable<K, V>> = {};
+
+    public index(
+        definition: IIndexDefinition<V>,
+        partitionInitializer?: (name: string, partition: IReadOnlyTable<K, V>) => void,
+    ): void;
+    public index(definition: null): void;
+    public index(
+        definition: IIndexDefinition<V> | null,
+        partitionInitializer?: (name: string, partition: IReadOnlyTable<K, V>) => void,
+    ): void {
+        if (definition == null) {
+            this._indexAccessor = null;
+            this._partitions = {};
+            this._partitionNames = new Map();
+            this._partitionInitializer = undefined;
+            return;
         }
 
-        return index;
+        // Normalize the definition
+        this._indexAccessor = (value: V | undefined) => {
+            if (value == undefined) {
+                return [] as readonly string[];
+            }
+
+            const keyOrKeys = definition(value);
+            if (keyOrKeys == null /** or undefined */) {
+                return [] as readonly string[];
+            }
+
+            return Array.isArray(keyOrKeys)
+                ? (keyOrKeys as readonly string[])
+                : ([keyOrKeys] as readonly string[]);
+        };
+        this._partitionInitializer = partitionInitializer;
+
+        this._applyIndexUpdate(this.keys(), false); // Build index membership for all existing values
+        this._refereshMaterialization();
     }
 
-    public registerIndex(name: string, definition: IIndexDefinition<T>): boolean {
-        if (name.includes(TablePathDelimiter)) {
-            throw new Error(`InvalidIndexName [Name=${name}]`);
-        }
-
-        if (!this._indexes[name]) {
-            this._indexes[name] = new RuntimeIndex(
-                `${this._config.name}${TablePathDelimiter}${name}`,
-                definition,
-                () => this._filter,
-                () => this._comparator,
-                this._config.shouldMaterialize,
-            );
-            this.refreshIndex(name);
-            this._refreshViewMaterialization(); // Because adding an index makes this a non-terminal partition and that can impact materialization
-            return true;
-        }
-
-        return false;
+    public partition(name: string): IReadOnlyTable<K, V> {
+        return this._getPartition(name);
     }
 
-    public refreshIndex(name: string): void {
-        const index = this._indexes[name];
-        if (!index) {
-            throw new Error(`IndexNotFound [Name=${name}]`);
-        }
-
-        this._applyIndexUpdate(this._allItemIds(), [name]); // Recalculate index membership for all items for this index only
-    }
-
-    public dropIndex(name: string): boolean {
-        if (this._indexes[name]) {
-            delete this._indexes[name];
-            this._refreshViewMaterialization(); // Because dropping an index may make this a terminal partition and that can impact materialization
-            return true;
-        }
-
-        return false;
-    }
-
-    // #endregion
-
-    // #region TRACKING
-
-    // Set of ids that have been modified in-memory
-    private readonly _modifiedIds = new Set<string>();
-
-    public nextDelta(maxItems?: number): string[] {
-        const delta: string[] = [];
-        let count = 0;
-
-        for (const id of this._modifiedIds) {
-            delta.push(id);
-            this._modifiedIds.delete(id); // safe during iteration in JS
-
-            if (maxItems && ++count >= maxItems) break;
-        }
-
-        return delta;
+    public partitions(): string[] {
+        return Object.keys(this._partitions).filter(
+            (name) => this._getPartition(name).keys().length > 0,
+        );
     }
 
     // #endregion
 
     // #region PRIVATE HELPERS
 
-    /**
-     * Core item update method with change detection and subsequent updates
-     * to ensure index and view consistency.
-     *
-     * @param id Item id
-     * @param value Item value
-     * @param shouldTrack Whether to track the item as modified in the next delta. Defaults to true.
-     * @returns True item was actually updated, false otherwise
-     */
-    private _setInternal(id: string, value: T | null): boolean {
-        // Step 1: Check if the item needs to be updated
-        const currentValue = this.get(id);
-        if (
-            (currentValue === null && value === null) ||
-            (currentValue !== null && value !== null && this._config.isEqual(currentValue, value))
-        ) {
-            return false;
-        }
+    private _getPartition(name: string): ITable<K, V> {
+        return (
+            this._partitions[name] ??
+            (() => {
+                // Step 1: Create a new partition table
+                const table = new Table<K, V>();
 
-        // Step 2: Update the item in the table
-        if (value !== null) {
-            this._items[id] = value;
-        } else {
-            delete this._items[id];
-        }
+                // Step 2: Propagate parent sorting to the partition
+                table.sort(this._comparator);
 
-        // Step 3: Propagate changes to derived structures (index, view, subscribers)
-        this._propagateChanges([id]);
+                // Step 3: Initialize the partition if an initializer is provided
+                this._partitionInitializer?.(name, table);
 
-        // Step 4: Flag the item as modified
-        if (this._config.deltaTracking) {
-            this._flag(id);
-        }
-
-        return true;
+                // Step 4: Store and return the partition
+                return (this._partitions[name] = table);
+            })()
+        );
     }
 
     /**
      * Propagate changes to indexes, views and notify subscribers.
-     * @param updatedIds Array of item IDs that have been updated
+     * @param updatedKeys Array of keys that have been updated
      */
-    private _propagateChanges(updatedIds: string[]) {
+    private _propagateChanges(updatedKeys: K[]) {
         if (this._isBatchOperationInProgress) {
-            // If a batch operation is in progress, we record the updated id for later processing
-            for (const id of updatedIds) {
-                this._idsUpdatedInCurrentBatch.add(id);
+            // If a batch operation is in progress, we record the updated key for later processing
+            for (const key of updatedKeys) {
+                this._keysUpdatedInCurrentBatch.add(key);
             }
         } else {
             // Step 1: Update indexes if any
-            this._applyIndexUpdate(updatedIds);
+            this._applyIndexUpdate(updatedKeys);
 
-            // Step 2: Update view if it has materialized
-            if (this._view) {
-                this._applyViewUpdate(this._view, updatedIds);
-            }
+            // Step 2: Update view
+            this._applyViewUpdate(updatedKeys);
 
             // Step 3: Notify subscribers about the changes
-            this._notifyListeners(updatedIds);
+            this._notifyListeners(updatedKeys);
         }
     }
 
     /**
-     * Apply updates to the indexes for the given ids.
-     * This method recalculates the partition keys for each item and updates the indexes accordingly.
-     * @param updatedIds Array of ids for which index membership needs to be recalculated
-     * @param indexNames Array of index names to update. Defaults to all indexes.
+     * Apply updates to the indexes for the given keys.
+     * This method recalculates the partition keys for each value and updates the indexes accordingly.
+     * @param updatedKeys Array of keys for which index membership needs to be recalculated
+     * @param valuesUpdated Flag indicating whether the values themselves were updated (true) or just refreshed (false)
      */
-    private _applyIndexUpdate(
-        updatedIds: string[],
-        indexNames: string[] = Object.keys(this._indexes),
-    ): void {
-        // Step 1: Calculate update batches for all partitions for given id's
-        const batch: Record<string, Record<string, Record<string, T | null>>> = {};
-        for (const indexName of indexNames) {
-            for (const id of updatedIds) {
-                const current = this._partitionKeys[id]?.[indexName] ?? [];
-                const target = this._indexes[indexName]!._accessor(this.get(id));
+    private _applyIndexUpdate(updatedKeys: K[], valuesUpdated: boolean = true) {
+        // Step 1: Calculate update batches for all partitions for given key's
+        // E.g. { "P1": Map { "key1" => value1, "key2" => null } } represents that key1 should be added/updated and key2 should be removed from partition "P1"
+        const batches: Record<string, Map<K, V | null>> = {};
+        for (const key of updatedKeys) {
+            const currentPartitions = this._partitionNames.get(key) ?? [];
+            const targetPartitions = this._indexAccessor
+                ? this._indexAccessor(this._map.get(key))
+                : [];
 
-                // Remove from all current partitions
-                for (const key of current) {
-                    _deepInsert(batch, indexName, key, id, null);
+            // Mark for removal from all current partitions
+            for (const name of currentPartitions) {
+                batches[name] ??= new Map<K, V | null>();
+                batches[name].set(key, null);
+            }
+
+            // Mark for addition to all target partitions
+            for (const name of targetPartitions) {
+                batches[name] ??= new Map<K, V | null>();
+
+                /**
+                 * If the key is marked for deletion in this partition (implies it already existd in that partition) and
+                 * the value itself was not updated, we can simply remove it from the batch as no change is needed.
+                 * This optimization avoids unnecessary touch operations on partitions when only re-indexing is needed.
+                 *
+                 * Otherwise, we mark the key for addition/update in the partition.
+                 */
+                if (!valuesUpdated && batches[name].get(key) === null) {
+                    batches[name].delete(key);
+                } else {
+                    batches[name].set(key, this._map.get(key)!);
                 }
+            }
 
-                // Add to all target partitions
-                for (const key of target) {
-                    _deepInsert(batch, indexName, key, id, this.get(id));
-                }
-
-                _deepInsert(this._partitionKeys, id, indexName, target);
+            // Update the partition names map
+            if (targetPartitions.length === 0) {
+                this._partitionNames.delete(key);
+            } else {
+                this._partitionNames.set(key, targetPartitions);
             }
         }
 
         // Step 2: Recursively apply the batch updates to all partitions
-        for (const indexName of Object.keys(batch)) {
-            for (const partitionKey of Object.keys(batch[indexName]!)) {
-                const partition = this._indexes[indexName]!.partition(partitionKey);
-                partition.runBatch((t) => {
-                    for (const [id, value] of Object.entries(batch[indexName]![partitionKey]!)) {
-                        t.set(id, value);
+        for (const [name, batch] of Object.entries(batches)) {
+            this._getPartition(name).batch((t) => {
+                for (const [key, value] of batch) {
+                    if (value === null) {
+                        t.delete(key);
+                    } else {
+                        t.set(key, value);
                     }
-                });
-            }
+                }
+            });
         }
     }
 
     /**
-     * Apply updates to the view when some id's are updated.
+     * Apply updates to the view when some key's are updated.
      *
-     * @param currentView The current view of the table
-     * @param updatedIds Array of ids which have been updated
+     * @param updatedKeys Array of keys which have been updated
      */
-    private _applyViewUpdate(currentView: string[], updatedIds: string[]) {
-        const { _filter, _comparator } = this;
-        const path = this._getTablePathTokens();
+    private _applyViewUpdate(updatedKeys: K[]) {
+        const { _sortedKeys, _comparator } = this;
+        if (!_sortedKeys || !_comparator) return; // No view to update
 
-        // Step 1: Split the ids into upserts and deletes
-        const upserts = _allocateEmptyArray<string>(updatedIds.length);
-        const deletes = _allocateEmptyArray<string>(updatedIds.length);
-        for (const id of updatedIds) {
-            const item = this.get(id);
-            if (item && _filter ? _filter(item, path) : !!item) {
-                upserts.push(id);
-            } else {
-                deletes.push(id);
-            }
-        }
+        // Sort the updated keys based on the current comparator
+        updatedKeys = updatedKeys
+            .filter((key) => this._map.has(key))
+            .sort(this._keyComparator(_comparator));
 
-        /**
-         * Step 2: Construct a view that maintains ordering invariants:
-         * 1. Remove deleted items: Items marked for removal are excluded from the view.
-         * 2. Preserve existing order: Items not being upserted keep their relative positions.
-         *    When no comparator exists, ALL existing items preserve their positions.
-         * 3. Avoid duplicates: Items already in the view and the upsert batch
-         *    are de-duped to prevent duplication during the final merge.
-         */
-        const upsertSet = new Set(upserts);
-        const deleteSet = new Set(deletes);
-
-        // Reset view to an empty array
-        const updatedView = _allocateEmptyArray<string>(
-            currentView.length + upserts.length - deletes.length,
+        const updatedKeysSet = new Set(updatedKeys);
+        const unchangedKeys = _sortedKeys.filter(
+            (key) => !updatedKeysSet.has(key) && this._map.has(key),
         );
 
-        let duplicateUpserts = false; // Flag to track if we have duplicate upserts
-        for (const id of currentView) {
-            // Case 1: If id needs to be removed, skip it and move to next
-            if (deleteSet.has(id)) {
-                continue;
-            }
+        this._sortedKeys = _allocateEmptyArray<K>(_sortedKeys.length);
 
-            /**
-             * Case 2: If id is in the upsert set as well, but comparator isn't defined, we should add it to the
-             * view to preserve existing order and remove from upsert set to avoid duplicates.
-             */
-            const isInUpsertSet = upsertSet.has(id);
-            if (isInUpsertSet && !_comparator) {
-                updatedView.push(id);
-                upsertSet.delete(id);
-                duplicateUpserts = true; // We have duplicate upserts
-            }
+        let i = 0; // Iterator for current view array
+        let j = 0; // Iterator for updatedKeys array
+        while (i < unchangedKeys.length || j < updatedKeys.length) {
+            // Pick one key from current view and one from updatedKeys array
+            const unchangedId = i < unchangedKeys.length ? unchangedKeys[i] : null;
+            const newId = j < updatedKeys.length ? updatedKeys[j] : null;
 
-            // Case 3: Id is not in the upsert set, move to view as is (preserves order among id's not in the upsert set)
-            if (!isInUpsertSet) {
-                updatedView.push(id);
+            // Add the key from the existing view if newIds array is empty or it comes before the key from the newIds array
+            if (
+                unchangedId &&
+                (!newId ||
+                    !this._map.get(newId) ||
+                    this._keyComparator(_comparator)(unchangedId, newId) <= 0)
+            ) {
+                this._sortedKeys.push(unchangedId);
+                i++;
+            } else {
+                this._sortedKeys.push(newId!);
+                j++;
             }
         }
-
-        // Step 3: Merge the new ids into the view
-        const newIds = duplicateUpserts ? Array.from(upsertSet) : upserts;
-        this._view = this._mergeIntoView(updatedView, newIds);
     }
 
     /**
-     * Notify all subscribed listeners about the delta of modified ids.
-     * @param delta The list of modified item ids
+     * Notify all subscribed listeners about the delta of modified keys.
+     * @param delta The list of modified value keys
      */
-    private _notifyListeners(delta: IDelta): void {
+    private _notifyListeners(delta: IDelta<K>) {
         for (const listener of this._listeners) {
             listener(delta);
         }
     }
 
-    // Flag an item as modified, which will be included in the next delta
-    private _flag(id: string): void {
-        this._modifiedIds.add(id);
-    }
-
     /**
-     * Merge id's into view using a 2-way merge strategy and preserve ordering invariants.
-     * For existing view size N and newId size M, this takes O(N + M*log(M)) time. This is
-     * close to linear time for M<<<N (most common case for user triggered singular edits).
-     *
-     * @param newIds Array of new ids to merge into the view
-     * @param currentView The current view of the table
+     * Refresh the materialized view of the table based on current sorting and indexing.
      */
-    private _mergeIntoView(currentView: string[], newIds: string[]): string[] {
-        const { _comparator } = this;
-        const path = this._getTablePathTokens();
+    private _refereshMaterialization(): void {
+        const { _sortedKeys, _comparator, _indexAccessor } = this;
 
-        // If no comparator is defined, we can just append the new id's to the view
-        if (!_comparator) {
-            return currentView.concat(newIds);
-        } else {
-            // Step 1: Sort the new id's if there are multiple
-            if (newIds.length > 1) {
-                newIds.sort((id1, id2) => _comparator(this._items[id1]!, this._items[id2]!, path));
-            }
+        // Table should be materialized when an on order is defined and no partitions exist
+        const shouldMaterialize = _comparator !== null && _indexAccessor === null;
 
-            // Step 2: Merge the current view and newIds one by one, satisfying the order constraint
-            const mergedView = _allocateEmptyArray<string>(currentView.length + newIds.length);
-            let i = 0; // Iterator for current view array
-            let j = 0; // Iterator for newIds array
-            while (i < currentView.length || j < newIds.length) {
-                // Pick one id from current view and one from newIds array
-                const currentId = i < currentView.length ? currentView[i] : null;
-                const newId = j < newIds.length ? newIds[j] : null;
+        // Case 1: Materialize order if a comparator is set and no partitions
+        if (_sortedKeys === null && shouldMaterialize) {
+            this._sortedKeys = this._sortKeys(_comparator);
+        }
 
-                // Add the id from the existing view if newIds array is empty or it comes before the id from the newIds array
-                if (
-                    currentId &&
-                    (!newId || _comparator(this._items[currentId]!, this._items[newId]!, path) <= 0)
-                ) {
-                    mergedView.push(currentId);
-                    i++;
-                } else {
-                    mergedView.push(newId!);
-                    j++;
-                }
-            }
-            return mergedView;
+        // Case 2: Clear materialized order if partitions exist
+        if (_sortedKeys !== null && !shouldMaterialize) {
+            this._sortedKeys = null;
         }
     }
 
-    // Check if this table has sub-partitions defined via indexes (i.e., it is not a terminal partition)
-    private _hasPartitions(): boolean {
-        return Object.keys(this._indexes).length > 0;
+    /* Helper to sort the keys based on the given comparator */
+    private _sortKeys(comparator: IComparator<V> | null): K[] {
+        const keys = Array.from(this._map.keys());
+        return comparator ? keys.sort(this._keyComparator(comparator)) : keys;
     }
 
-    /**
-     * A custom iterator that yields all partitions across all indexes.
-     * @yields ITable<T> - Each partition of the table
-     */
-    private *_partitions() {
-        for (const index of Object.values(this._indexes)) {
-            for (const key of index.keys()) {
-                yield index.partition(key);
-            }
-        }
-    }
-
-    // Helper to get path tokens for this table
-    private _getTablePathTokens(): string[] {
-        return this._config.name.split(TablePathDelimiter);
-    }
-
-    // Helper to get all item ids in the table (bypassing any applied filter)
-    private _allItemIds(): string[] {
-        return Object.keys(this._items);
-    }
-
-    // Helper to refresh the view materialization state
-    private _refreshViewMaterialization() {
-        // Materialize the view if needed
-        if (!this._view && this._shouldMaterializeView()) {
-            this._view = this.itemIds();
-        }
-
-        // OR Unmaterialize the view if it is no longer needed
-        if (this._view && !this._shouldMaterializeView()) {
-            this._view = null;
-        }
-    }
-
-    // Helper to determine if the view should be materialized based on current state and configuration
-    private _shouldMaterializeView(): boolean {
-        /*
-         * View should be materialized if following conditions are met:
-         * 1. Either a filter or a comparator is applied.
-         * 2. The node is specified to be materialized as per the configuration.
-         */
-        return (
-            !!(this._filter || this._comparator) &&
-            this._config.shouldMaterialize(this._getTablePathTokens(), !this._hasPartitions())
-        );
+    /* Helper to create a key comparator from a value comparator */
+    private _keyComparator(_comparator: IComparator<V>): IComparator<K> {
+        // Assume all keys exist in the map when this is called
+        return (k1, k2) => _comparator(this._map.get(k1)!, this._map.get(k2)!);
     }
 
     // #endregion
-}
-
-// #region INTERNAL RUNTIME CONTRACTS
-
-/**
- * Defines the runtime index for internal table operations. This interface is
- * private to the table and only meant for internal operations.
- */
-interface IRuntimeIndex<T> extends IIndex<T> {
-    /**
-     * A normalized accessor function that always returns an array of strings,
-     * representing partition keys associated with the given item for this index.
-     */
-    readonly _accessor: (item: T | null) => readonly string[];
-
-    /**
-     * Access a specific runtime partition within this index.
-     */
-    partition(key: string): ITable<T>;
-}
-
-// #endregion
-
-// #region INTERNAL RUNTIME OBJECTS
-
-/**
- * Runtime index implementation that partitions table items and manages access to those partitions.
- * Each partition is itself a table with optional sorting and filtering, enabling the recursive
- * table structure that allows sophisticated data organization and query patterns.
- */
-class RuntimeIndex<T> implements IRuntimeIndex<T> {
-    public readonly _accessor: (item: T | null) => readonly string[];
-
-    /** All partitions for this index */
-    private readonly _partitions: Record<string, ITable<T>> = {};
-
-    /**
-     * This constructor initializes a runtime index for a table.
-     * @param name The name of the index.
-     * @param definition The index accessor function that defines which partitions an item belongs to.
-     * @param getParentFilter A function that returns the filter for the parent table, if any.
-     * @param getParentComparator A function that returns the comparator for the parent table, if any.
-     */
-    public constructor(
-        private readonly _name: string,
-        _definition: IIndexDefinition<T>,
-        private readonly _getParentFilter: () => IFilter<T> | null,
-        private readonly _getParentComparator: () => IComparator<T> | null,
-        private readonly _shouldMaterialize: (pathTokens: string[], isTerminal: boolean) => boolean,
-    ) {
-        // Normalize the definition
-        this._accessor = (item: T | null) => {
-            if (!item) {
-                return [] as readonly string[];
-            }
-
-            const keyOrKeys = _definition(item);
-            if (!keyOrKeys) {
-                return [] as readonly string[];
-            }
-
-            if (Array.isArray(keyOrKeys)) {
-                return keyOrKeys as readonly string[];
-            } else {
-                return [keyOrKeys] as readonly string[];
-            }
-        };
-    }
-
-    public keys(): string[] {
-        return Object.keys(this._partitions);
-    }
-
-    public partition(key: string): ITable<T> {
-        if (key.includes(TablePathDelimiter)) {
-            throw new Error(`InvalidPartitionKey [Index=${this._name}][Partition=${key}]`);
-        }
-
-        // Lazily initialize the partition if it does not exist
-        if (!this._partitions[key]) {
-            this._partitions[key] = new Table({
-                name: `${this._name}${TablePathDelimiter}${key}`,
-                /*
-                 * Change tracking is not needed for sub-partitions because these cannot be edited directly
-                 * via the public API. The edits made via the parent table are already tracked at the root
-                 * table and hence tracking at any layer below the root is unnecessary.
-                 */
-                deltaTracking: false,
-
-                // Propagate the materialization logic to the partition
-                shouldMaterialize: this._shouldMaterialize,
-            });
-
-            // Propagate the parent filter and comparator to the partition
-            this._partitions[key].applyFilter(this._getParentFilter());
-            this._partitions[key].applyComparator(this._getParentComparator());
-        }
-
-        return this._partitions[key];
-    }
 }
 
 // #endregion
@@ -702,35 +376,6 @@ function _allocateEmptyArray<T>(size: number): T[] {
     const array: T[] = new Array(size > 1 ? size : 1);
     array.length = 0; // Ensure the array is empty
     return array;
-}
-
-/**
- * Deeply inserts a value into an object at the specified path.
- * Usage: _deepInsert(obj, 'a', 'b', 'c', value) will insert `value` at `obj.a.b.c`.
- *
- * @param obj The object to insert into
- * @param args The path to insert the value at, with the last argument being the value to insert
- */
-function _deepInsert(
-    obj: Record<string, any>,
-    key1: string,
-    ...remainingKeysAndValue: any[]
-): void {
-    const value = remainingKeysAndValue.pop();
-    let current = obj;
-
-    // Add key1 to the front of the path
-    const keys = [key1, ...remainingKeysAndValue];
-
-    for (let i = 0; i < keys.length - 1; i++) {
-        const key = keys[i];
-        if (!current[key]) {
-            current[key] = {};
-        }
-        current = current[key];
-    }
-
-    current[keys[keys.length - 1]] = value;
 }
 
 // #endregion

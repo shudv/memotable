@@ -15,15 +15,15 @@ import type { IReadOnlyTable } from "../../contracts/IReadOnlyTable";
  *
  *   return (
  *     <ul>
- *       {table.items().map(item => (
- *         <li key={item.id}>{item.name}</li>
+ *       {table.values().map(value => (
+ *         <li key={value.id}>{value.name}</li>
  *       ))}
  *     </ul>
  *   );
  * };
  * ```
  */
-export function useTable<T>(table: IReadOnlyTable<T>) {
-    const [, setRenderKey] = useState(0); // State to trigger re-renders
-    useEffect(() => table.subscribe(() => setRenderKey((key) => key + 1)));
+export function useTable<K, V>(table: IReadOnlyTable<K, V>) {
+    const [, tick] = useState(0); // State to trigger re-renders
+    useEffect(() => table.subscribe(() => tick((key) => ++key)));
 }
