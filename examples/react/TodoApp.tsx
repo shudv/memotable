@@ -52,7 +52,7 @@ function ListView({ title, table }: { title: string; table: IReadOnlyTable<strin
                     </li>
                 ))}
             </ul>
-            <div style={styles.listViewCount}>Total: {table.keys().length} items</div>
+            <div style={styles.listViewCount}>Total: {table.keys().length} tasks</div>
         </div>
     );
 }
@@ -76,15 +76,15 @@ export function TodoApp() {
     };
 
     const removeTodo = () => {
-        const items = todoTable.values();
-        if (items.length > 0) {
-            todoTable.delete(items[items.length - 1].id);
+        const tasks = todoTable.values();
+        if (tasks.length > 0) {
+            todoTable.delete(tasks[tasks.length - 1].id);
         }
     };
 
     const clearAll = () => {
-        const items = todoTable.values();
-        items.forEach((todo) => todoTable.delete(todo.id));
+        const tasks = todoTable.values();
+        tasks.forEach((todo) => todoTable.delete(todo.id));
     };
 
     const handleKeywordChange = (e: React.ChangeEvent<HTMLInputElement>) => {

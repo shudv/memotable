@@ -23,9 +23,20 @@ export interface IIndexableTable<K, V> {
     /**
      * Index values in the table based on the given definition.
      *
-     * @param definition A funtion that defines how to index items, or null to remove indexing
+     * @param definition A funtion that defines how to index values
+     * @param partitionInitializer Optional function that is called whenever a new partition is created, allowing to customize it (e.g., adding indexes or sorting)
      */
-    index(definition: IIndexDefinition<V> | null): void;
+    index(
+        definition: IIndexDefinition<V>,
+        partitionInitializer?: (name: string, partition: IReadOnlyTable<K, V>) => void,
+    ): void;
+
+    /**
+     * Remove index from the table.
+     *
+     * @param definition Must be null to remove existing index
+     */
+    index(definition: null): void;
 
     /**
      * Access a partition by name.

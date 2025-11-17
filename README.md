@@ -33,7 +33,7 @@ This has two fundamental problems:
 - If you recreate the array on every render, you pay **full recomputation cost** every time — so your “optimization” does nothing.
 
 Most of the time, you don’t need to “memoize” collections at all — just recompute them and move on.
-But when you _do_ need to avoid recomputation — say, thousands of items with heavy filter/comparator logic —  
+But when you _do_ need to avoid recomputation — say, thousands of values with heavy filter/comparator logic —  
 you need a structure that’s actually designed for that.
 
 That’s what `memotable` is.
@@ -117,7 +117,7 @@ It's **not** a full state management system like MobX or Zustand. Instead, it's 
 Memotable uses **partitioned tables** with **incremental propagation** to achieve efficient derived views:
 
 - **Partitioning**: Each index splits data into multiple sub-tables (partitions) based on key extraction. These partitions can themselves be indexed further, creating a recursive tree structure.
-- **Incremental updates**: When items change, only affected partitions recalculate their state. Filters and sorts propagate changes without full re-computation.
+- **Incremental updates**: When values change, only affected partitions recalculate their state. Filters and sorts propagate changes without full re-computation.
 - **Materialized views**: Filtered and sorted results are cached in memory for instant reads. Materialization can be toggled per partition to balance memory usage vs. read performance.
 - **Subscription model**: Fine-grained listeners at any level (root table, index, or partition) receive updates only when their specific view changes.
 
@@ -149,7 +149,7 @@ import { useTable } from "memotable/react";
 
 function MyComponent({ table }) {
     useTable(table); // Auto-subscribes, triggers re-render on change and cleans up on unmount
-    return <div>{table.items().length} items</div>;
+    return <div>{table.keys().length} values</div>;
 }
 ```
 

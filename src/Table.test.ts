@@ -18,23 +18,6 @@ describe("Table", () => {
             expect(table.values().length).toEqual(3);
         });
 
-        test("set() and get() - should honor custom equality", () => {
-            const table = new Table<string, ITask>((task1, task2) => task1.title === task2.title);
-            const task = { title: "Task One" };
-            expect(table.set("1", task)).toBe(true);
-            expect(table.set("1", task)).toBe(false); // No-op
-            expect(table.set("1", task)).toBe(false); // No-op
-
-            expect(table.get("1")?.title).toEqual(task.title);
-            table.set("1", {
-                title: "Task One Updated",
-            });
-            expect(table.get("1")?.title).toEqual("Task One Updated");
-
-            table.delete("1"); // Should remove the value
-            expect(table.get("1")).toBeUndefined();
-        });
-
         test("delete() - should remove value", () => {
             const table = new Table<string, ITask>();
 
@@ -287,19 +270,45 @@ describe("Table", () => {
             table.set("2", { tags: ["exclude"] });
             table.set("3", { tags: ["include"] });
 
-            // Create a filtered view that only includes items with "include" tag
+            // Create a filtered view that only includes values with "include" tag
             table.index((value) => (value.tags.includes("include") ? "Included" : undefined));
 
             expect(table.partition("Included").keys().sort()).toEqual(["1", "3"]);
             expect(table.partition("Excluded").keys()).toEqual([]);
 
-            // Update an item to move it into the included partition
+            // Update a value to move it into the included partition
             table.set("2", { tags: ["include"] });
             expect(table.partition("Included").keys().sort()).toEqual(["1", "2", "3"]);
 
-            // Update an item to move it out of the included partition
+            // Update a value to move it out of the included partition
             table.set("1", { tags: ["exclude"] });
             expect(table.partition("Included").keys().sort()).toEqual(["2", "3"]);
+        });
+
+        test("custom partition initialization", () => {
+            const table = new Table<string, ITaggedValue>();
+            table.set("1", { tags: ["A", "IGNORE", "C"] });
+            table.set("2", { tags: ["B", "IGNORE"] });
+            table.set("3", { tags: ["A"] });
+
+            table.index(
+                (value) => value.tags,
+                (name, partition) => {
+                    switch (name) {
+                        case "IGNORE":
+                            // Sort values with "IGNORE" tag by number of tags descending
+                            partition.sort((a, b) => b.tags.length - a.tags.length);
+                            break;
+                        default:
+                            // Default sort by number of tags ascending
+                            partition.sort((a, b) => a.tags.length - b.tags.length);
+                            break;
+                    }
+                },
+            );
+
+            expect(table.partition("A").keys()).toEqual(["3", "1"]); // Sorted by tag count ascending
+            expect(table.partition("IGNORE").keys()).toEqual(["1", "2"]); // Sorted by tag count descending
         });
     });
 
@@ -508,30 +517,19 @@ describe("Table", () => {
 
     describe("Batching", () => {
         test("batch updates track changes correctly", () => {
-            const table = new Table<string, ITask>((task1, task2) => task1.title === task2.title);
+            const table = new Table<string, ITask>();
 
-            let changed = table.batch((t) => {
+            table.batch((t) => {
                 t.set("1", { title: "Task One*" });
                 t.set("2", { title: "Task Two*" });
                 t.delete("3");
                 t.set("4", { title: "Task Four*" });
             });
 
-            expect(changed).toBe(true);
             expect(table.get("1")!.title).toEqual("Task One*");
             expect(table.get("2")!.title).toEqual("Task Two*");
             expect(table.get("3")).toBeUndefined();
             expect(table.get("4")!.title).toEqual("Task Four*");
-
-            // Duplicate execution should not change the table
-            changed = table.batch((t) => {
-                t.set("1", { title: "Task One*" });
-                t.set("2", { title: "Task Two*" });
-                t.delete("3");
-                t.set("4", { title: "Task Four*" });
-            });
-
-            expect(changed).toBe(false);
         });
 
         test("batch updates notify subscribers once even if there are multiple updates", () => {

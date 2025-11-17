@@ -1,4 +1,5 @@
-import { ITable } from "./contracts/ITable";
+// Contracts
+import { ITable, TBatch } from "./contracts/ITable";
 import { IComparator } from "./contracts/ISortableTable";
 import { IDelta } from "./contracts/IObservableTable";
 import { IIndexDefinition } from "./contracts/IIndexableTable";
@@ -9,8 +10,6 @@ import { IReadOnlyTable } from "./contracts/IReadOnlyTable";
  * @template T Type of the values in the table
  */
 export class Table<K, V> implements ITable<K, V> {
-    public constructor(private readonly equals = (value1: V, value2: V) => value1 === value2) {}
-
     // #region BASIC OPERATIONS
 
     // A map to hold the actual values in the table
@@ -33,38 +32,26 @@ export class Table<K, V> implements ITable<K, V> {
         return this._sortedKeys ? this._sortedKeys : this._sortKeys(this._comparator);
     }
 
-    public set(key: K, value: V | undefined) {
-        // Step 1: Check if the value needs to be updated
-        const currentValue = this.get(key);
-        if (
-            (currentValue === undefined && value === undefined) ||
-            (currentValue !== undefined && value !== undefined && this.equals(currentValue, value))
-        ) {
+    public set(key: K, value: V): void {
+        this._map.set(key, value);
+        this._propagateChanges([key]);
+    }
+
+    public delete(key: K): boolean {
+        if (!this._map.has(key)) {
             return false;
         }
 
-        // Step 1: Update the value in the table
-        if (value != null) {
-            this._map.set(key, value);
-        } else {
-            this._map.delete(key);
-        }
-
-        // Step 2: Propagate changes to derived structures (index, sorting, subscribers)
+        this._map.delete(key);
         this._propagateChanges([key]);
-
         return true;
-    }
-
-    public delete(key: K) {
-        return this.set(key, undefined);
     }
 
     public touch(key: K) {
         this._propagateChanges([key]);
     }
 
-    public batch(fn: (t: ITable<K, V>) => void): boolean {
+    public batch(fn: (t: TBatch<K, V>) => void): void {
         // Step 1: Run the batch of operations and mark start and end to disable change propagation on every set/delete
         this._isBatchOperationInProgress = true;
         fn(this);
@@ -74,10 +61,7 @@ export class Table<K, V> implements ITable<K, V> {
         if (this._keysUpdatedInCurrentBatch.size > 0) {
             this._propagateChanges(Array.from(this._keysUpdatedInCurrentBatch));
             this._keysUpdatedInCurrentBatch.clear();
-            return true;
         }
-
-        return false;
     }
 
     // #endregion
@@ -104,8 +88,8 @@ export class Table<K, V> implements ITable<K, V> {
         this._comparator = comparator;
 
         // Step 1: Apply sorting to all partitions
-        for (const bucket of Object.values(this._partitions)) {
-            bucket.sort(comparator);
+        for (const partition of Object.values(this._partitions)) {
+            partition.sort(comparator);
         }
 
         // Step 2: Reset current materialized view, if any
@@ -125,7 +109,10 @@ export class Table<K, V> implements ITable<K, V> {
     // #region INDEXING
 
     /** Normalized index accessor function that returns latest partition names a give value should be in */
-    public _indexAccessor: ((value: V | undefined) => readonly string[]) | null = null;
+    private _indexAccessor: ((value: V | undefined) => readonly string[]) | null = null;
+
+    /** Optional partition initializer function */
+    private _partitionInitializer?: (name: string, partition: IReadOnlyTable<K, V>) => void;
 
     /** Map of keys to their current partition names (used for diffing against new updates) */
     private _partitionNames: Map<K, readonly string[]> = new Map();
@@ -133,11 +120,20 @@ export class Table<K, V> implements ITable<K, V> {
     /** All partitions created by this index */
     private _partitions: Record<string, ITable<K, V>> = {};
 
-    public index(definition: IIndexDefinition<V> | null) {
+    public index(
+        definition: IIndexDefinition<V>,
+        partitionInitializer?: (name: string, partition: IReadOnlyTable<K, V>) => void,
+    ): void;
+    public index(definition: null): void;
+    public index(
+        definition: IIndexDefinition<V> | null,
+        partitionInitializer?: (name: string, partition: IReadOnlyTable<K, V>) => void,
+    ): void {
         if (definition == null) {
             this._indexAccessor = null;
             this._partitions = {};
             this._partitionNames = new Map();
+            this._partitionInitializer = undefined;
             return;
         }
 
@@ -156,6 +152,7 @@ export class Table<K, V> implements ITable<K, V> {
                 ? (keyOrKeys as readonly string[])
                 : ([keyOrKeys] as readonly string[]);
         };
+        this._partitionInitializer = partitionInitializer;
 
         this._applyIndexUpdate(this.keys(), false); // Build index membership for all existing values
         this._refereshMaterialization();
@@ -179,9 +176,16 @@ export class Table<K, V> implements ITable<K, V> {
         return (
             this._partitions[name] ??
             (() => {
-                // Create a new partition table
-                const table = new Table<K, V>(() => false);
+                // Step 1: Create a new partition table
+                const table = new Table<K, V>();
+
+                // Step 2: Propagate parent sorting to the partition
                 table.sort(this._comparator);
+
+                // Step 3: Initialize the partition if an initializer is provided
+                this._partitionInitializer?.(name, table);
+
+                // Step 4: Store and return the partition
                 return (this._partitions[name] = table);
             })()
         );

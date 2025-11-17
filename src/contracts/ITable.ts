@@ -1,9 +1,12 @@
 import { IReadOnlyTable } from "./IReadOnlyTable";
 
+// Define a type that includes only the mutation methods of ITable that can be batched
+export type TBatch<K, V> = Pick<ITable<K, V>, "set" | "delete" | "touch">;
+
 /**
  * Interface for a table that also supports mutation operations on top of existing features.
- * @template K Type of the item keys
- * @template V Type of the items in the table
+ * @template K Type of the keys
+ * @template V Type of the values in the table
  */
 export interface ITable<K, V> extends IReadOnlyTable<K, V> {
     /**
@@ -11,11 +14,13 @@ export interface ITable<K, V> extends IReadOnlyTable<K, V> {
      * @param key Item key
      * @param value Item value
      */
-    set(key: K, value: V): boolean;
+    set(key: K, value: V): void;
 
     /**
      * Delete a value from the table
      * @param key Item key
+     *
+     * @returns True if the key was deleted, false if the key was not found
      */
     delete(key: K): boolean;
 
@@ -33,5 +38,5 @@ export interface ITable<K, V> extends IReadOnlyTable<K, V> {
      * Run a batch of operations on the table
      * @param fn Function that receives the table as an argument and performs multiple edit operations on it
      */
-    batch(fn: (t: ITable<K, V>) => void): boolean;
+    batch(fn: (t: TBatch<K, V>) => void): void;
 }

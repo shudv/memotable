@@ -11,6 +11,6 @@ export interface ISortableTable<V> {
 }
 
 /**
- * Function that defines how items should be ordered in the table.
+ * Function that defines how values should be ordered in the table.
  */
 export type IComparator<V> = (value1: V, value2: V) => number;

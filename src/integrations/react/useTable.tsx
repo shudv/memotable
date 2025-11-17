@@ -15,8 +15,8 @@ import type { IReadOnlyTable } from "../../contracts/IReadOnlyTable";
  *
  *   return (
  *     <ul>
- *       {table.items().map(item => (
- *         <li key={item.id}>{item.name}</li>
+ *       {table.values().map(value => (
+ *         <li key={value.id}>{value.name}</li>
  *       ))}
  *     </ul>
  *   );

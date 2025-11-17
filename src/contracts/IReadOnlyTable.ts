@@ -5,25 +5,27 @@ import { ISortableTable } from "./ISortableTable";
 
 /**
  * Interface for a read-only table that supports read operations, indexing, sorting.
- * @template T Type of the items in the table
+ *
+ * @template K Type of the keys
+ * @template V Type of the values in the table
  */
 export interface IReadOnlyTable<K, V>
     extends IIndexableTable<K, V>,
         ISortableTable<V>,
         IObservableTable<K> {
     /**
-     * Get the table item with the given id
-     * @param id Item id
+     * Get value with the given key
+     * @param key Item key
      */
-    get(id: K): V | undefined;
+    get(key: K): V | undefined;
 
     /**
-     * Get all items in the table
+     * Get all values in the table
      */
     values(): V[];
 
     /**
-     * Get all items in the table
+     * Get all keys in the table
      */
     keys(): K[];
 }

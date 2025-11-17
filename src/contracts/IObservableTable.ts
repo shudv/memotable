@@ -1,4 +1,4 @@
-// Type of delta update (a list of item keys that were added, updated, or deleted)
+// Type of delta update (a list of keys that were added, updated, or deleted)
 export type IDelta<K> = readonly K[];
 
 /**

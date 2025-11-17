@@ -16,7 +16,7 @@ describe("useTable", () => {
         table = new Table<string, Task>();
     });
 
-    test("triggers re-render on item update", () => {
+    test("triggers re-render on update", () => {
         let renderCount = 0;
 
         table.set("task-1", { id: "task-1", title: "Original", completed: false });
@@ -35,7 +35,7 @@ describe("useTable", () => {
         expect(renderCount).toBe(initialCount + 1);
     });
 
-    test("triggers re-render on item deletion", () => {
+    test("triggers re-render on deletion", () => {
         let renderCount = 0;
 
         table.set("task-1", { id: "task-1", title: "Test", completed: false });
