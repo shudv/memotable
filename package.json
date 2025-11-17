@@ -1,7 +1,7 @@
 {
     "name": "memotable",
     "version": "1.1.2",
-    "description": "Reactive, memoized in-memory tables for structured data — derived, sorted, and filtered views that update incrementally.",
+    "description": "A tiny JavaScript data structure for maintaining derived collections (indexed and sorted) with correct incremental updates.",
     "type": "module",
     "sideEffects": false,
     "exports": {
@@ -38,17 +38,25 @@
         "release": "pnpm changeset version && pnpm install && git add . && git commit -m 'chore: version bump' && git push",
         "publish:ci": "pnpm changeset publish",
         "prepare": "husky install",
-        "size": "size-limit",
+        "size": "pnpm build && pnpm size-limit && node measure-size.ts memotable Table",
         "size:mangle": "npx esbuild src/index.ts --bundle --minify --mangle-props='^_' --outfile=dist/mangled.js && brotli -c dist/mangled.js | wc -c",
         "benchmark": "vitest run Table.benchmark.test.ts --testTimeout=120000 --no-coverage"
     },
     "keywords": [
         "typescript",
-        "library",
-        "reactive",
-        "memoized",
-        "table",
-        "data-structures"
+        "memoization",
+        "incremental",
+        "in-memory",
+        "indexed-collections",
+        "sorted-collections",
+        "filtered-collections",
+        "derived-data",
+        "reactive-data-structure",
+        "data-indexing",
+        "materialized-view",
+        "batching",
+        "partitioning",
+        "usememo-alternative"
     ],
     "author": "Shubham Dwivedi <shudv@users.noreply.github.com>",
     "license": "MIT",
