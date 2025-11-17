@@ -1,10 +1,4 @@
 #!/usr/bin/env node
-// measure-size.js (ESM version)
-
-// Type declarations for Node.js test environment
-declare const console: {
-    log: (...args: any[]) => void;
-};
 
 import esbuild from "esbuild";
 import { gzipSync } from "zlib";

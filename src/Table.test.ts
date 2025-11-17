@@ -148,6 +148,25 @@ describe("Table", () => {
             expect(table.partition("D").keys()).toEqual(["3"]);
         });
 
+        test("partitions() - should return all non-empty partition names", () => {
+            const table = new Table<string, ITaggedValue>();
+            table.set("1", { tags: ["A", "B"] });
+            table.set("2", { tags: ["B", "C"] });
+            table.set("3", { tags: ["C", "D"] });
+
+            table.index((value) => value.tags);
+
+            // Eagerly access a partition to create it
+            table.partition("E").sort(() => 0);
+
+            const partitions = table.partitions().sort();
+            expect(partitions).toEqual(["A", "B", "C", "D"]); // Should not include empty "E" partition
+
+            table.set("4", { tags: ["E"] });
+            const updatedPartitions = table.partitions().sort();
+            expect(updatedPartitions).toEqual(["A", "B", "C", "D", "E"]);
+        });
+
         test("should update partitions correctly when values are added, updated or removed", () => {
             const table = new Table<string, ITaggedValue>();
             table.index((value) => value.tags);
@@ -259,6 +278,28 @@ describe("Table", () => {
 
             expect(table.partition("A").keys()).toEqual([]);
             expect(table.partition("B").keys()).toEqual([]);
+        });
+
+        test("creating filtered views via indexing", () => {
+            const table = new Table<string, ITaggedValue>();
+
+            table.set("1", { tags: ["include"] });
+            table.set("2", { tags: ["exclude"] });
+            table.set("3", { tags: ["include"] });
+
+            // Create a filtered view that only includes items with "include" tag
+            table.index((value) => (value.tags.includes("include") ? "Included" : undefined));
+
+            expect(table.partition("Included").keys().sort()).toEqual(["1", "3"]);
+            expect(table.partition("Excluded").keys()).toEqual([]);
+
+            // Update an item to move it into the included partition
+            table.set("2", { tags: ["include"] });
+            expect(table.partition("Included").keys().sort()).toEqual(["1", "2", "3"]);
+
+            // Update an item to move it out of the included partition
+            table.set("1", { tags: ["exclude"] });
+            expect(table.partition("Included").keys().sort()).toEqual(["2", "3"]);
         });
     });
 

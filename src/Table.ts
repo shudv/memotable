@@ -124,33 +124,25 @@ export class Table<K, V> implements ITable<K, V> {
 
     // #region INDEXING
 
-    /**
-     * The in-memory indexes for this table and a partition key map for each value.
-     * Example index: { "plan": (task => task.planId) }
-     * Example partition key map: { "task1": { "plan": ["plan1"] }, "task2": { "plan": ["plan2"] } }
-     */
-    public _definition: ((value: V | undefined) => readonly string[]) | null = null;
+    /** Normalized index accessor function that returns latest partition names a give value should be in */
+    public _indexAccessor: ((value: V | undefined) => readonly string[]) | null = null;
 
-    /** All partitions for this index */
-    private _partitions: Record<string, ITable<K, V>> = {};
-
-    /** Map of value keys to their current partition names */
+    /** Map of keys to their current partition names (used for diffing against new updates) */
     private _partitionNames: Map<K, readonly string[]> = new Map();
 
-    public partition(name: string): IReadOnlyTable<K, V> {
-        return this._getPartition(name);
-    }
+    /** All partitions created by this index */
+    private _partitions: Record<string, ITable<K, V>> = {};
 
     public index(definition: IIndexDefinition<V> | null) {
         if (definition == null) {
-            this._definition = null;
+            this._indexAccessor = null;
             this._partitions = {};
             this._partitionNames = new Map();
             return;
         }
 
         // Normalize the definition
-        this._definition = (value: V | undefined) => {
+        this._indexAccessor = (value: V | undefined) => {
             if (value == undefined) {
                 return [] as readonly string[];
             }
@@ -167,6 +159,16 @@ export class Table<K, V> implements ITable<K, V> {
 
         this._applyIndexUpdate(this.keys(), false); // Build index membership for all existing values
         this._refereshMaterialization();
+    }
+
+    public partition(name: string): IReadOnlyTable<K, V> {
+        return this._getPartition(name);
+    }
+
+    public partitions(): string[] {
+        return Object.keys(this._partitions).filter(
+            (name) => this._getPartition(name).keys().length > 0,
+        );
     }
 
     // #endregion
@@ -218,31 +220,40 @@ export class Table<K, V> implements ITable<K, V> {
         // E.g. { "P1": Map { "key1" => value1, "key2" => null } } represents that key1 should be added/updated and key2 should be removed from partition "P1"
         const batches: Record<string, Map<K, V | null>> = {};
         for (const key of updatedKeys) {
-            const current = this._partitionNames.get(key) ?? [];
-            const target = this._definition ? this._definition(this._map.get(key)) : [];
+            const currentPartitions = this._partitionNames.get(key) ?? [];
+            const targetPartitions = this._indexAccessor
+                ? this._indexAccessor(this._map.get(key))
+                : [];
 
             // Mark for removal from all current partitions
-            for (const value of current) {
-                batches[value] = batches[value] ?? new Map<K, V | null>();
-                batches[value].set(key, null);
+            for (const name of currentPartitions) {
+                batches[name] ??= new Map<K, V | null>();
+                batches[name].set(key, null);
             }
 
             // Mark for addition to all target partitions
-            for (const value of target) {
-                batches[value] = batches[value] ?? new Map<K, V | null>();
+            for (const name of targetPartitions) {
+                batches[name] ??= new Map<K, V | null>();
 
-                if (!valuesUpdated && batches[value].get(key) === null) {
-                    batches[value].delete(key);
+                /**
+                 * If the key is marked for deletion in this partition (implies it already existd in that partition) and
+                 * the value itself was not updated, we can simply remove it from the batch as no change is needed.
+                 * This optimization avoids unnecessary touch operations on partitions when only re-indexing is needed.
+                 *
+                 * Otherwise, we mark the key for addition/update in the partition.
+                 */
+                if (!valuesUpdated && batches[name].get(key) === null) {
+                    batches[name].delete(key);
                 } else {
-                    batches[value].set(key, this._map.get(key)!);
+                    batches[name].set(key, this._map.get(key)!);
                 }
             }
 
             // Update the partition names map
-            if (target.length > 0) {
-                this._partitionNames.set(key, target);
-            } else {
+            if (targetPartitions.length === 0) {
                 this._partitionNames.delete(key);
+            } else {
+                this._partitionNames.set(key, targetPartitions);
             }
         }
 
@@ -269,13 +280,15 @@ export class Table<K, V> implements ITable<K, V> {
         const { _sortedKeys, _comparator } = this;
         if (!_sortedKeys || !_comparator) return; // No view to update
 
-        const updatedKeysSet = new Set(updatedKeys);
-        const unchangedKeys = _sortedKeys.filter((key) => !updatedKeysSet.has(key));
-
         // Sort the updated keys based on the current comparator
         updatedKeys = updatedKeys
             .filter((key) => this._map.has(key))
-            .sort((k1, k2) => _comparator(this._map.get(k1)!, this._map.get(k2)!));
+            .sort(this._keyComparator(_comparator));
+
+        const updatedKeysSet = new Set(updatedKeys);
+        const unchangedKeys = _sortedKeys.filter(
+            (key) => !updatedKeysSet.has(key) && this._map.has(key),
+        );
 
         this._sortedKeys = _allocateEmptyArray<K>(_sortedKeys.length);
 
@@ -291,7 +304,7 @@ export class Table<K, V> implements ITable<K, V> {
                 unchangedId &&
                 (!newId ||
                     !this._map.get(newId) ||
-                    _comparator(this._map.get(unchangedId)!, this._map.get(newId)!) <= 0)
+                    this._keyComparator(_comparator)(unchangedId, newId) <= 0)
             ) {
                 this._sortedKeys.push(unchangedId);
                 i++;
@@ -316,10 +329,10 @@ export class Table<K, V> implements ITable<K, V> {
      * Refresh the materialized view of the table based on current sorting and indexing.
      */
     private _refereshMaterialization(): void {
-        const { _sortedKeys, _comparator, _definition } = this;
+        const { _sortedKeys, _comparator, _indexAccessor } = this;
 
         // Table should be materialized when an on order is defined and no partitions exist
-        const shouldMaterialize = _comparator !== null && _definition === null;
+        const shouldMaterialize = _comparator !== null && _indexAccessor === null;
 
         // Case 1: Materialize order if a comparator is set and no partitions
         if (_sortedKeys === null && shouldMaterialize) {
@@ -332,14 +345,16 @@ export class Table<K, V> implements ITable<K, V> {
         }
     }
 
-    /**
-     *  Sort the keys based on the given comparator.
-     */
+    /* Helper to sort the keys based on the given comparator */
     private _sortKeys(comparator: IComparator<V> | null): K[] {
         const keys = Array.from(this._map.keys());
-        return comparator
-            ? keys.sort((k1, k2) => comparator(this._map.get(k1)!, this._map.get(k2)!))
-            : keys;
+        return comparator ? keys.sort(this._keyComparator(comparator)) : keys;
+    }
+
+    /* Helper to create a key comparator from a value comparator */
+    private _keyComparator(_comparator: IComparator<V>): IComparator<K> {
+        // Assume all keys exist in the map when this is called
+        return (k1, k2) => _comparator(this._map.get(k1)!, this._map.get(k2)!);
     }
 
     // #endregion

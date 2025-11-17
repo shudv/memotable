@@ -21,6 +21,13 @@ export type IIndexDefinition<V> = (
  */
 export interface IIndexableTable<K, V> {
     /**
+     * Index values in the table based on the given definition.
+     *
+     * @param definition A funtion that defines how to index items, or null to remove indexing
+     */
+    index(definition: IIndexDefinition<V> | null): void;
+
+    /**
      * Access a partition by name.
      * @param name The name of the partition
      *
@@ -29,9 +36,9 @@ export interface IIndexableTable<K, V> {
     partition(name: string): IReadOnlyTable<K, V>;
 
     /**
-     * Index values in the table based on the given definition.
+     * Get all non-empty partition names in the table.
      *
-     * @param definition A funtion that defines how to index items, or null to remove indexing
+     * @returns An array with all partition names
      */
-    index(definition: IIndexDefinition<V> | null): void;
+    partitions(): string[];
 }

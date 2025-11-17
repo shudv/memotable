@@ -1,10 +1,5 @@
 import { Table } from "./Table";
 
-// Type declarations for Node.js test environment
-declare const console: {
-    log: (...args: any[]) => void;
-};
-
 declare const performance: {
     now: () => number;
 };
@@ -119,10 +114,10 @@ class VanillaImplementation {
         }
     }
 
-    getListTasks(listId: string): Task[] {
+    getTasksInList(listId: string): Task[] {
         // Full filter + sort on every read
         return Array.from(this.tasks.values())
-            .filter((t) => t.listId === listId && !t.isCompleted)
+            .filter((t) => t.listId === listId && !t.isCompleted) // active tasks only
             .sort((a, b) => {
                 // Two-factor sort to match Table implementation
                 if (a.isImportant !== b.isImportant) {
@@ -130,12 +125,6 @@ class VanillaImplementation {
                 }
                 return b.createdAt - a.createdAt;
             });
-    }
-
-    getImportantTasks(): Task[] {
-        return Array.from(this.tasks.values())
-            .filter((t) => t.isImportant && !t.isCompleted)
-            .sort((a, b) => b.createdAt - a.createdAt);
     }
 }
 
@@ -146,8 +135,19 @@ class VanillaImplementation {
 function setupTableImplementationByList(tasks: Task[]): Table<string, Task> {
     const table = new Table<string, Task>();
 
+    // Populate the table
+    table.batch((t) => {
+        for (const task of tasks) {
+            t.set(task.id, task);
+        }
+    });
+
     // Index by list - only show incomplete tasks
-    table.index((task) => (task.isCompleted ? undefined : task.listId));
+    table.index((task) => task.listId);
+
+    for (const listId of table.partitions()) {
+        table.partition(listId).index((task) => (!task.isCompleted ? "Active" : undefined));
+    }
 
     // Sort by importance + createdAt within each list bucket
     table.sort((a, b) => {
@@ -155,32 +155,6 @@ function setupTableImplementationByList(tasks: Task[]): Table<string, Task> {
             return a.isImportant ? -1 : 1;
         }
         return b.createdAt - a.createdAt;
-    });
-
-    // Populate the table
-    table.batch((t) => {
-        for (const task of tasks) {
-            t.set(task.id, task);
-        }
-    });
-
-    return table;
-}
-
-function setupTableImplementationByImportance(tasks: Task[]): Table<string, Task> {
-    const table = new Table<string, Task>();
-
-    // Index by importance - only show incomplete important tasks
-    table.index((task) => (task.isImportant && !task.isCompleted ? "important" : undefined));
-
-    // Sort by createdAt
-    table.sort((a, b) => b.createdAt - a.createdAt);
-
-    // Populate the table
-    table.batch((t) => {
-        for (const task of tasks) {
-            t.set(task.id, task);
-        }
     });
 
     return table;
@@ -235,10 +209,7 @@ function benchmarkVanilla(tasks: Task[], config: BenchmarkConfig): BenchmarkResu
     const readStart = performance.now();
     for (let i = 0; i < config.numReads; i++) {
         const listId = `list-${Math.floor(Math.random() * config.numLists)}`;
-        impl.getListTasks(listId);
-        if (i % 10 === 0) {
-            impl.getImportantTasks();
-        }
+        impl.getTasksInList(listId);
     }
     const readEnd = performance.now();
 
@@ -256,7 +227,6 @@ function benchmarkMemoTable(tasks: Task[], config: BenchmarkConfig): BenchmarkRe
     // Create two separate tables - one indexed by list, one by importance
     const loadStart = performance.now();
     const tableByList = setupTableImplementationByList(tasks);
-    const tableByImportance = setupTableImplementationByImportance(tasks);
     const loadEnd = performance.now();
 
     // Benchmark edits - need to update both tables
@@ -278,9 +248,7 @@ function benchmarkMemoTable(tasks: Task[], config: BenchmarkConfig): BenchmarkRe
             updatedTask = { ...task, isImportant: !task.isImportant };
         }
 
-        // Update both tables
         tableByList.set(task.id, updatedTask);
-        tableByImportance.set(task.id, updatedTask);
 
         // Update the tasks array for consistency
         const taskIndex = tasks.findIndex((t) => t.id === task.id);
@@ -294,10 +262,7 @@ function benchmarkMemoTable(tasks: Task[], config: BenchmarkConfig): BenchmarkRe
     const readStart = performance.now();
     for (let i = 0; i < config.numReads; i++) {
         const listId = `list-${Math.floor(Math.random() * config.numLists)}`;
-        tableByList.partition(listId).values();
-        if (i % 10 === 0) {
-            tableByImportance.partition("important").values();
-        }
+        tableByList.partition(listId).partition("Active").values();
     }
     const readEnd = performance.now();
 
