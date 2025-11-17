@@ -1,30 +1,37 @@
 import { IReadOnlyTable } from "./IReadOnlyTable";
 
 /**
- * Interface for a table that also supports mutation operations on top of basic features.
- * @template T Type of the items in the table
+ * Interface for a table that also supports mutation operations on top of existing features.
+ * @template K Type of the item keys
+ * @template V Type of the items in the table
  */
-export interface ITable<T> extends IReadOnlyTable<T> {
+export interface ITable<K, V> extends IReadOnlyTable<K, V> {
     /**
-     * Set an item in the table
-     * @param id Item id
+     * Set a value in the table
+     * @param key Item key
      * @param value Item value
      */
-    set(id: string, value: T | null): boolean;
+    set(key: K, value: V): boolean;
 
     /**
-     * Refresh an item.
-     *
-     * This is needed when an item is either mutated in place or when external
-     * factors affect the derived structures (indexes or views).
-     *
-     * @param id Item id
+     * Delete a value from the table
+     * @param key Item key
      */
-    refresh(id: string): void;
+    delete(key: K): boolean;
+
+    /**
+     * Touch a value in the table
+     *
+     * This is needed when a value is either mutated in place or when external
+     * factors affect the derived structures (indexes or order).
+     *
+     * @param key Item key
+     */
+    touch(key: K): void;
 
     /**
      * Run a batch of operations on the table
      * @param fn Function that receives the table as an argument and performs multiple edit operations on it
      */
-    batch(fn: (t: ITable<T>) => void): boolean;
+    batch(fn: (t: ITable<K, V>) => void): boolean;
 }

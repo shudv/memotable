@@ -143,8 +143,8 @@ class VanillaImplementation {
 // Scenario 2: Table-based implementations
 // ============================================================================
 
-function setupTableImplementationByList(tasks: Task[]): Table<Task> {
-    const table = new Table<Task>();
+function setupTableImplementationByList(tasks: Task[]): Table<string, Task> {
+    const table = new Table<string, Task>();
 
     // Index by list - only show incomplete tasks
     table.index((task) => (task.isCompleted ? undefined : task.listId));
@@ -167,8 +167,8 @@ function setupTableImplementationByList(tasks: Task[]): Table<Task> {
     return table;
 }
 
-function setupTableImplementationByImportance(tasks: Task[]): Table<Task> {
-    const table = new Table<Task>();
+function setupTableImplementationByImportance(tasks: Task[]): Table<string, Task> {
+    const table = new Table<string, Task>();
 
     // Index by importance - only show incomplete important tasks
     table.index((task) => (task.isImportant && !task.isCompleted ? "important" : undefined));
@@ -294,9 +294,9 @@ function benchmarkMemoTable(tasks: Task[], config: BenchmarkConfig): BenchmarkRe
     const readStart = performance.now();
     for (let i = 0; i < config.numReads; i++) {
         const listId = `list-${Math.floor(Math.random() * config.numLists)}`;
-        tableByList.partition(listId).items();
+        tableByList.partition(listId).values();
         if (i % 10 === 0) {
-            tableByImportance.partition("important").items();
+            tableByImportance.partition("important").values();
         }
     }
     const readEnd = performance.now();

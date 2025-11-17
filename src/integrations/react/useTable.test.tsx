@@ -10,10 +10,10 @@ interface Task {
 }
 
 describe("useTable", () => {
-    let table: Table<Task>;
+    let table: Table<string, Task>;
 
     beforeEach(() => {
-        table = new Table<Task>();
+        table = new Table<string, Task>();
     });
 
     test("triggers re-render on item update", () => {
@@ -48,7 +48,7 @@ describe("useTable", () => {
         const initialCount = renderCount;
 
         act(() => {
-            table.set("task-1", null);
+            table.delete("task-1");
         });
 
         expect(renderCount).toBe(initialCount + 1);

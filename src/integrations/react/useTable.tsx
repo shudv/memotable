@@ -23,7 +23,7 @@ import type { IReadOnlyTable } from "../../contracts/IReadOnlyTable";
  * };
  * ```
  */
-export function useTable<T>(table: IReadOnlyTable<T>) {
+export function useTable<K, V>(table: IReadOnlyTable<K, V>) {
     const [, tick] = useState(0); // State to trigger re-renders
-    useEffect(() => table.subscribe(() => tick((key) => key + 1)));
+    useEffect(() => table.subscribe(() => tick((key) => ++key)));
 }

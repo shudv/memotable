@@ -1,87 +1,75 @@
-import { describe, it, expect, vi } from "vitest";
 import { Table } from "./Table";
 
-// Test item types
+// Test value types
 type ITask = { title: string };
-type ICategoryItem = { id: string; category: string };
+type ITaggedValue = { tags: string[] };
 type IPerson = { name: string; age: number };
 
 describe("Table", () => {
     describe("Basic Operations", () => {
-        it("should get and set items", () => {
-            const table = new Table<ITask>();
+        test("set() and get()", () => {
+            const table = new Table<string, ITask>();
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
             table.set("3", { title: "Task Three" });
 
             expect(table.get("1")?.title).toEqual("Task One");
-            expect(table.ids()).toEqual(["1", "2", "3"]);
-            expect(table.items().length).toEqual(3);
+            expect(table.keys()).toEqual(["1", "2", "3"]);
+            expect(table.values().length).toEqual(3);
         });
 
-        it("should return null for non-existent items", () => {
-            const table = new Table<ITask>();
-            expect(table.get("non-existent")).toBeNull();
+        test("set() and get() - should honor custom equality", () => {
+            const table = new Table<string, ITask>((task1, task2) => task1.title === task2.title);
+            const task = { title: "Task One" };
+            expect(table.set("1", task)).toBe(true);
+            expect(table.set("1", task)).toBe(false); // No-op
+            expect(table.set("1", task)).toBe(false); // No-op
+
+            expect(table.get("1")?.title).toEqual(task.title);
+            table.set("1", {
+                title: "Task One Updated",
+            });
+            expect(table.get("1")?.title).toEqual("Task One Updated");
+
+            table.delete("1"); // Should remove the value
+            expect(table.get("1")).toBeUndefined();
         });
 
-        it("should delete items when set to null", () => {
-            const table = new Table<ITask>();
+        test("delete() - should remove value", () => {
+            const table = new Table<string, ITask>();
+
             table.set("1", { title: "Task One" });
-            table.set("1", null); // Delete item
+            expect(table.delete("1")).toBe(true);
+            expect(table.delete("1")).toBe(false); // No-op
+            expect(table.delete("1")).toBe(false); // No-op
 
-            expect(table.get("1")).toBeNull();
+            expect(table.get("1")).toBeUndefined();
         });
 
-        it("should return all items", () => {
-            const table = new Table<ITask>();
+        test("values() - should return all values", () => {
+            const table = new Table<string, ITask>();
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
 
-            const allItems = table.items();
-            expect(allItems.length).toBe(2);
-            expect(allItems).toEqual(
+            const values = table.values();
+            expect(values.length).toBe(2);
+            expect(values).toEqual(
                 expect.arrayContaining([{ title: "Task One" }, { title: "Task Two" }]),
             );
         });
 
-        it("should return all ids", () => {
-            const table = new Table<ITask>();
+        test("keys() - should return all keys", () => {
+            const table = new Table<string, ITask>();
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
 
-            expect(table.ids()).toEqual(["1", "2"]);
-        });
-
-        it("should handle batch operations", () => {
-            const table = new Table<ITask>();
-
-            let changed = table.batch((t) => {
-                t.set("1", { title: "Task One*" });
-                t.set("2", { title: "Task Two*" });
-                t.set("3", null);
-                t.set("4", { title: "Task Four*" });
-            });
-
-            expect(changed).toBe(true);
-            expect(table.get("1")!.title).toEqual("Task One*");
-            expect(table.get("2")!.title).toEqual("Task Two*");
-            expect(table.get("3")).toBeNull();
-            expect(table.get("4")!.title).toEqual("Task Four*");
-
-            // Duplicate execution should not change the table
-            changed = table.batch((t) => {
-                t.set("1", { title: "Task One*" });
-                t.set("2", { title: "Task Two*" });
-                t.set("3", null);
-                t.set("4", { title: "Task Four*" });
-            });
-            expect(changed).toBe(true);
+            expect(table.keys().sort()).toEqual(["1", "2"]);
         });
     });
 
     describe("Subscriptions", () => {
-        it("should notify subscribers on changes", () => {
-            const table = new Table<ITask>();
+        test("subscribe() - should notify on changes", () => {
+            const table = new Table<string, ITask>();
 
             const callback = vi.fn();
             table.subscribe(callback);
@@ -93,8 +81,8 @@ describe("Table", () => {
             expect(callback).toHaveBeenCalledWith(["2"]);
         });
 
-        it("should allow unsubscribing", () => {
-            const table = new Table<ITask>();
+        test("unsubscription - should stop notifications after unsubscribe", () => {
+            const table = new Table<string, ITask>();
 
             const callback = vi.fn();
             const unsubscribe = table.subscribe(callback);
@@ -108,8 +96,8 @@ describe("Table", () => {
             expect(callback).toHaveBeenCalledTimes(1); // No new calls after unsubscribe
         });
 
-        it("should notify with delta after batch operations", () => {
-            const table = new Table<ITask>();
+        test("notification deltas should contain all modified keys", () => {
+            const table = new Table<string, ITask>();
 
             const callback = vi.fn();
             table.subscribe(callback);
@@ -121,239 +109,404 @@ describe("Table", () => {
             });
 
             expect(callback).toHaveBeenCalledTimes(1);
+            expect(callback).toHaveBeenCalledWith(["1", "2", "3"]);
         });
 
-        it("should notify subscribers on bucket changes", () => {
-            const table = new Table<ICategoryItem>();
-            table.index((item) => item.category);
+        test("nested subscriptions", () => {
+            const table = new Table<string, ITaggedValue>();
+            table.index((value) => value.tags);
 
-            table.set("1", { id: "1", category: "A" });
+            const callback = vi.fn();
 
-            const bucketA = table.partition("A");
-            const listener = vi.fn();
-            bucketA.subscribe(listener);
+            // Subscribe to a partition
+            table.partition("A").subscribe(callback);
 
-            table.set("2", { id: "2", category: "A" });
-            expect(listener).toHaveBeenCalled();
-        });
-    });
+            // Add a value to a different partition
+            table.set("1", { tags: ["B"] });
 
-    describe("Sorting", () => {
-        it("should sort items by comparator", () => {
-            const table = new Table<IPerson>();
-            table.set("1", { name: "Alice", age: 30 });
-            table.set("2", { name: "Bob", age: 25 });
-            table.set("3", { name: "Charlie", age: 35 });
+            expect(callback).not.toHaveBeenCalled();
 
-            table.sort((a, b) => a.age - b.age);
+            // Add a value to the subscribed partition
+            table.set("2", { tags: ["A"] });
 
-            expect(table.ids()).toEqual(["2", "1", "3"]);
-        });
-
-        it("should clear sort when comparator is null", () => {
-            const table = new Table<IPerson>();
-            table.set("1", { name: "Alice", age: 30 });
-            table.set("2", { name: "Bob", age: 25 });
-
-            table.sort((a, b) => a.age - b.age);
-            table.sort(null);
-
-            table.set("0", { name: "Someone", age: 35 });
-
-            // Not a full proof test but will typically be true
-            expect(table.ids().at(-1)).not.toEqual("0");
-        });
-
-        it("should update sorted view when items are modified", () => {
-            const table = new Table<IPerson>();
-            table.set("1", { name: "Alice", age: 30 });
-            table.set("2", { name: "Bob", age: 25 });
-            table.set("3", { name: "Charlie", age: 35 });
-
-            table.sort((a, b) => a.age - b.age);
-            expect(table.ids()).toEqual(["2", "1", "3"]);
-
-            // Update an item to trigger view update
-            table.set("2", { name: "Bob", age: 40 });
-            expect(table.ids()).toEqual(["1", "3", "2"]);
-        });
-
-        it("should handle items removed from sorted view", () => {
-            const table = new Table<IPerson>();
-            table.set("1", { name: "Alice", age: 30 });
-            table.set("2", { name: "Bob", age: 25 });
-            table.set("3", { name: "Charlie", age: 35 });
-
-            table.sort((a, b) => a.age - b.age);
-
-            table.set("2", null); // Delete middle item
-            expect(table.ids()).toEqual(["1", "3"]);
-        });
-
-        it("should handle adding new items to sorted view", () => {
-            const table = new Table<IPerson>();
-            table.set("1", { name: "Alice", age: 30 });
-            table.set("3", { name: "Charlie", age: 35 });
-
-            table.sort((a, b) => a.age - b.age);
-
-            table.set("2", { name: "Bob", age: 25 }); // Add new item
-            expect(table.ids()).toEqual(["2", "1", "3"]);
-        });
-
-        it("should notify listeners when sort is applied", () => {
-            const table = new Table<IPerson>();
-            table.set("1", { name: "Alice", age: 30 });
-            table.set("2", { name: "Bob", age: 25 });
-
-            const listener = vi.fn();
-            table.subscribe(listener);
-
-            table.sort((a, b) => a.age - b.age);
-            expect(listener).toHaveBeenCalledWith([]);
-        });
-
-        it("should notify listeners when sort is cleared", () => {
-            const table = new Table<IPerson>();
-            table.set("1", { name: "Alice", age: 30 });
-            table.set("2", { name: "Bob", age: 25 });
-            table.sort((a, b) => a.age - b.age);
-
-            const listener = vi.fn();
-            table.subscribe(listener);
-
-            table.sort(null);
-            expect(listener).toHaveBeenCalledWith([]);
+            expect(callback).toHaveBeenCalledWith(["2"]);
         });
     });
 
     describe("Indexing", () => {
-        it("should create buckets based on index definition", () => {
-            const table = new Table<ICategoryItem>();
-            table.set("1", { id: "1", category: "A" });
-            table.set("2", { id: "2", category: "B" });
-            table.set("3", { id: "3", category: "A" });
+        test("should create partitions based on index definition", () => {
+            const table = new Table<string, ITaggedValue>();
+            table.set("1", { tags: ["A", "B"] });
+            table.set("2", { tags: ["B", "C"] });
+            table.set("3", { tags: ["C", "D"] });
 
-            table.index((item) => item.category);
+            table.index((value) => value.tags);
 
-            expect(table.partitions()).toContain("A");
-            expect(table.partitions()).toContain("B");
-            expect(table.partition("A").ids()).toEqual(["1", "3"]);
-            expect(table.partition("B").ids()).toEqual(["2"]);
+            expect(table.partition("A").keys()).toEqual(["1"]);
+            expect(table.partition("B").keys().sort()).toEqual(["1", "2"]);
+            expect(table.partition("C").keys().sort()).toEqual(["2", "3"]);
+            expect(table.partition("D").keys()).toEqual(["3"]);
         });
 
-        it("should update buckets when items change", () => {
-            const table = new Table<ICategoryItem>();
-            table.index((item) => item.category);
+        test("should update partitions correctly when values are added, updated or removed", () => {
+            const table = new Table<string, ITaggedValue>();
+            table.index((value) => value.tags);
 
-            table.set("1", { id: "1", category: "A" });
-            expect(table.partition("A").ids()).toEqual(["1"]);
+            // Add values
+            table.set("1", { tags: ["A", "B"] });
+            table.set("2", { tags: ["B", "C"] });
 
-            table.set("1", { id: "1", category: "B" });
-            expect(table.partition("A").ids()).toEqual([]);
-            expect(table.partition("B").ids()).toEqual(["1"]);
+            expect(table.partition("A").keys()).toEqual(["1"]);
+            expect(table.partition("B").keys().sort()).toEqual(["1", "2"]);
+            expect(table.partition("C").keys()).toEqual(["2"]);
+
+            // Update value
+            table.set("2", { tags: ["C", "D"] });
+
+            expect(table.partition("A").keys()).toEqual(["1"]);
+            expect(table.partition("B").keys()).toEqual(["1"]); // 2 removed
+            expect(table.partition("C").keys()).toEqual(["2"]);
+            expect(table.partition("D").keys()).toEqual(["2"]);
+
+            // Delete value
+            table.delete("1");
+
+            expect(table.partition("A").keys()).toEqual([]);
+            expect(table.partition("B").keys()).toEqual([]);
+            expect(table.partition("C").keys()).toEqual(["2"]);
+            expect(table.partition("D").keys()).toEqual(["2"]);
         });
 
-        it("should support multi-value index definitions", () => {
-            const table = new Table<{ id: string; tags: string[] }>();
-            table.index((item) => item.tags);
+        test("eager subscriptions - should be able to subscribe before a value is added", () => {
+            const table = new Table<string, ITaggedValue>();
+            table.index((value) => value.tags);
 
-            table.set("1", { id: "1", tags: ["red", "blue"] });
-            table.set("2", { id: "2", tags: ["blue", "green"] });
+            const callback = vi.fn();
 
-            expect(table.partition("red").ids()).toEqual(["1"]);
-            expect(table.partition("blue").ids()).toEqual(["1", "2"]);
-            expect(table.partition("green").ids()).toEqual(["2"]);
+            // Subscribe to a partition
+            table.partition("A").subscribe(callback);
+
+            // Add a value to the subscribed partition
+            table.set("1", { tags: ["A"] });
+
+            expect(callback).toHaveBeenCalledWith(["1"]);
         });
 
-        it("should clear index when definition is null", () => {
-            const table = new Table<ICategoryItem>();
-            table.set("1", { id: "1", category: "A" });
-            table.index((item) => item.category);
+        test("should return empty table for non-existent partition", () => {
+            const table = new Table<string, ITaggedValue>();
+            table.index((value) => value.tags);
 
-            expect(table.partitions()).toContain("A");
-
-            table.index(null);
-            expect(table.partitions()).toEqual([]);
+            const partition = table.partition("NonExistent");
+            expect(partition.keys()).toEqual([]);
         });
 
-        it("should return empty table for non-existent bucket", () => {
-            const table = new Table<ICategoryItem>();
-            table.index((item) => item.category);
+        test("should handle null/undefined values in index definition", () => {
+            const table = new Table<string, ITaggedValue>();
+            table.index((value) => {
+                if (value.tags.includes("IGNORE")) {
+                    return null;
+                }
 
-            const bucket = table.partition("NonExistent");
-            expect(bucket.ids()).toEqual([]);
-        });
+                if (value.tags.includes("SKIP")) {
+                    return undefined;
+                }
 
-        it("should handle null items in index definition", () => {
-            const table = new Table<ICategoryItem>();
-            table.index((item) => item.category);
-
-            table.set("1", { id: "1", category: "A" });
-            expect(table.partition("A").ids()).toEqual(["1"]);
-
-            table.set("1", null);
-            expect(table.partition("A").ids()).toEqual([]);
-        });
-
-        it("should handle undefined return from index definition", () => {
-            const table = new Table<{ id: string; category?: string }>();
-            table.index((item) => item.category);
-
-            table.set("1", { id: "1" }); // No category
-            table.set("2", { id: "2", category: "A" });
-
-            expect(table.partitions()).toEqual(["A"]);
-            expect(table.partition("A").ids()).toEqual(["2"]);
-        });
-
-        it("should handle null return from index definition", () => {
-            const table = new Table<{ id: string; category: string | null }>();
-            table.index((item) => item.category ?? undefined);
-
-            table.set("1", { id: "1", category: null });
-            table.set("2", { id: "2", category: "A" });
-
-            expect(table.partitions()).toEqual(["A"]);
-        });
-
-        it("should auto-create buckets on first access", () => {
-            const table = new Table<{ id: string; category: string }>();
-            table.index((item) => item.category);
-
-            expect(table.partitions()).toEqual([]);
-
-            table.set("1", { id: "1", category: "A" });
-            expect(table.partitions()).toContain("A");
-            expect(table.partition("A").ids()).toEqual(["1"]);
-        });
-
-        it("should handle batch updates with indexing", () => {
-            const table = new Table<ICategoryItem>();
-            table.index((item) => item.category);
-
-            table.batch((t) => {
-                t.set("1", { id: "1", category: "A" });
-                t.set("2", { id: "2", category: "A" });
-                t.set("3", { id: "3", category: "B" });
+                return value.tags;
             });
 
-            expect(table.partition("A").ids()).toEqual(["1", "2"]);
-            expect(table.partition("B").ids()).toEqual(["3"]);
+            table.set("1", { tags: ["A", "IGNORE"] });
+            table.set("2", { tags: ["B", "SKIP"] });
+            table.set("3", { tags: ["C"] });
+
+            expect(table.partition("A").keys()).toEqual([]);
+            expect(table.partition("B").keys()).toEqual([]);
+            expect(table.partition("C").keys()).toEqual(["3"]);
         });
 
-        it("should handle removing items from multi-value index", () => {
-            const table = new Table<{ id: string; tags: string[] }>();
-            table.index((item) => item.tags);
+        test("should re-index when index definition is changed", () => {
+            const table = new Table<string, ITaggedValue>();
+            table.set("1", { tags: ["A"] });
+            table.set("2", { tags: ["B"] });
+            table.set("3", { tags: ["C"] });
 
-            table.set("1", { id: "1", tags: ["red", "blue"] });
-            expect(table.partition("red").ids()).toEqual(["1"]);
-            expect(table.partition("blue").ids()).toEqual(["1"]);
+            table.index((value) => value.tags);
 
-            table.set("1", { id: "1", tags: ["green"] });
-            expect(table.partition("red").ids()).toEqual([]);
-            expect(table.partition("blue").ids()).toEqual([]);
-            expect(table.partition("green").ids()).toEqual(["1"]);
+            expect(table.partition("A").keys()).toEqual(["1"]);
+            expect(table.partition("B").keys()).toEqual(["2"]);
+            expect(table.partition("C").keys()).toEqual(["3"]);
+
+            // Change index definition
+            table.index((value) => value.tags.map((tag) => (tag === "A" ? tag + "*" : tag)));
+
+            expect(table.partition("A").keys()).toEqual([]);
+            expect(table.partition("A*").keys()).toEqual(["1"]); // Re-indexed
+            expect(table.partition("B").keys()).toEqual(["2"]);
+            expect(table.partition("C").keys()).toEqual(["3"]);
+        });
+
+        test("should delete partitions when index is removed", () => {
+            const table = new Table<string, ITaggedValue>();
+            table.set("1", { tags: ["A"] });
+            table.set("2", { tags: ["B"] });
+
+            table.index((value) => value.tags);
+
+            expect(table.partition("A").keys()).toEqual(["1"]);
+            expect(table.partition("B").keys()).toEqual(["2"]);
+
+            // Remove indexing
+            table.index(null);
+
+            expect(table.partition("A").keys()).toEqual([]);
+            expect(table.partition("B").keys()).toEqual([]);
+        });
+    });
+
+    describe("Sorting", () => {
+        test("sorting values by comparator", () => {
+            const table = new Table<string, IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+            table.set("3", { name: "Charlie", age: 35 });
+
+            table.sort((a, b) => a.age - b.age);
+
+            expect(table.keys()).toEqual(["2", "1", "3"]);
+        });
+
+        test("sort order should be cleared when comparator is null", () => {
+            const table = new Table<string, IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+
+            table.sort((a, b) => a.age - b.age);
+            expect(table.keys()).toEqual(["2", "1"]);
+            table.sort(null);
+
+            table.set("0", { name: "Someone", age: 35 });
+            table.set("3", { name: "Someone", age: 10 });
+
+            // Not a full proof test but will typically be true
+            expect(table.keys()).not.toEqual(["3", "2", "1", "0"]);
+        });
+
+        test("sort order consistency when values are added, updated or removed", () => {
+            const table = new Table<string, IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+            table.set("3", { name: "Charlie", age: 35 });
+
+            table.sort((a, b) => a.age - b.age);
+            expect(table.keys()).toEqual(["2", "1", "3"]);
+
+            table.set("3", { name: "Charlie", age: 15 });
+            table.delete("2");
+            table.set("4", { name: "Dave", age: 40 });
+
+            expect(table.keys()).toEqual(["3", "1", "4"]);
+        });
+
+        test("should notify listeners when sort is applied (with empty delta because values themselves weren't updated)", () => {
+            const table = new Table<string, IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+
+            const listener = vi.fn();
+            table.subscribe(listener);
+
+            table.sort((a, b) => a.age - b.age);
+            expect(listener).toHaveBeenCalledWith([]);
+        });
+
+        test("should not notify listeners when sort is cleared (because it's unnecessary)", () => {
+            const table = new Table<string, IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+            table.sort((a, b) => a.age - b.age);
+
+            const listener = vi.fn();
+            table.subscribe(listener);
+
+            table.sort(null);
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        test("should apply sort order to partitions recursively and eagerly", () => {
+            const table = new Table<string, IPerson>();
+            table.index((person) => (person.age < 30 ? "Under30" : "Over30"));
+            table.sort((a, b) => a.age - b.age); // Eagerly apply sort at root
+
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+            table.set("3", { name: "Charlie", age: 35 });
+            table.set("4", { name: "Dave", age: 20 });
+
+            expect(table.keys()).toEqual(["4", "2", "1", "3"]);
+            expect(table.partition("Under30").keys()).toEqual(["4", "2"]);
+            expect(table.partition("Over30").keys()).toEqual(["1", "3"]);
+
+            // Apply new sort at root
+            table.sort((a, b) => b.age - a.age);
+
+            expect(table.keys()).toEqual(["3", "1", "2", "4"]);
+            expect(table.partition("Under30").keys()).toEqual(["2", "4"]);
+            expect(table.partition("Over30").keys()).toEqual(["3", "1"]);
+        });
+    });
+
+    describe("Materialization", () => {
+        test("should materialize sorted keys for terminal partitions", () => {
+            const table = new Table<string, IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+            table.set("3", { name: "Charlie", age: 35 });
+            table.set("4", { name: "Dave", age: 20 });
+
+            table.index((person) => (person.age < 30 ? "Under30" : "Over30"));
+
+            // Apply sort
+            table.sort((a, b) => a.age - b.age);
+
+            // Root should  not be materialized because it has partitions
+            expect(table.keys()).not.toBe(table.keys()); // Evey read returns a new reference (indirect proxy to test whether materialization happened)
+
+            // Terminal partitions should be materialized
+            expect(table.partition("Under30").keys()).toBe(table.partition("Under30").keys());
+            expect(table.partition("Over30").keys()).toBe(table.partition("Over30").keys());
+        });
+
+        test("should un-materialize keys when sort is cleared", () => {
+            const table = new Table<string, IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+
+            // Apply sort
+            table.sort((a, b) => a.age - b.age);
+
+            // Keys should be materialized
+            expect(table.keys()).toBe(table.keys());
+
+            // Clear sort
+            table.sort(null);
+
+            // Keys should no longer be materialized
+            expect(table.keys()).not.toBe(table.keys());
+        });
+
+        test("should un-materialize keys when partitioning is applied", () => {
+            const table = new Table<string, IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+
+            // Apply sort
+            table.sort((a, b) => a.age - b.age);
+
+            // Keys should be materialized
+            expect(table.keys()).toBe(table.keys());
+
+            // Apply partitioning
+            table.index((person) => (person.age < 30 ? "Under30" : "Over30"));
+
+            // Keys should no longer be materialized
+            expect(table.keys()).not.toBe(table.keys());
+        });
+    });
+
+    describe("Touch", () => {
+        test("touching a key should refresh it's index position and sort order", () => {
+            const table = new Table<string, IPerson>();
+
+            // An index config that can be tweaked externally
+            const config = {
+                ignoreNames: ["A", "B"],
+                specialNames: ["X", "Y"], // Always on top
+            };
+
+            // An index that defines an "Allowed" partition excluding certain names
+            table.index((value) => (config.ignoreNames.includes(value.name) ? null : "Allowed"));
+
+            // Sort by name lexicographically - but keep special names on top
+            table.sort((a, b) => {
+                if (config.specialNames.includes(a.name) && !config.specialNames.includes(b.name)) {
+                    return -1;
+                } else if (
+                    !config.specialNames.includes(a.name) &&
+                    config.specialNames.includes(b.name)
+                ) {
+                    return 1;
+                } else {
+                    return a.name.localeCompare(b.name);
+                }
+            });
+
+            table.set("A", { name: "A", age: 30 });
+            table.set("B", { name: "B", age: 25 });
+            table.set("C", { name: "C", age: 35 });
+            table.set("D", { name: "D", age: 20 });
+            table.set("X", { name: "X", age: 20 });
+            table.set("Y", { name: "Y", age: 15 });
+            table.set("Z", { name: "Z", age: 10 });
+
+            expect(table.partition("Allowed").keys()).toEqual(["X", "Y", "C", "D", "Z"]);
+
+            // Now, tweak the config to change index and sort behavior and touch affected keys
+            table.batch((t) => {
+                config.ignoreNames = ["B", "C"]; // Remove C, add A
+                config.specialNames = ["Y", "Z"]; // Remove X, add Z
+
+                t.touch("A");
+                t.touch("C");
+                t.touch("X");
+                t.touch("Z");
+            });
+
+            // Validate updated positions
+            expect(table.partition("Allowed").keys()).toEqual(["Y", "Z", "A", "D", "X"]);
+        });
+    });
+
+    describe("Batching", () => {
+        test("batch updates track changes correctly", () => {
+            const table = new Table<string, ITask>((task1, task2) => task1.title === task2.title);
+
+            let changed = table.batch((t) => {
+                t.set("1", { title: "Task One*" });
+                t.set("2", { title: "Task Two*" });
+                t.delete("3");
+                t.set("4", { title: "Task Four*" });
+            });
+
+            expect(changed).toBe(true);
+            expect(table.get("1")!.title).toEqual("Task One*");
+            expect(table.get("2")!.title).toEqual("Task Two*");
+            expect(table.get("3")).toBeUndefined();
+            expect(table.get("4")!.title).toEqual("Task Four*");
+
+            // Duplicate execution should not change the table
+            changed = table.batch((t) => {
+                t.set("1", { title: "Task One*" });
+                t.set("2", { title: "Task Two*" });
+                t.delete("3");
+                t.set("4", { title: "Task Four*" });
+            });
+
+            expect(changed).toBe(false);
+        });
+
+        test("batch updates notify subscribers once even if there are multiple updates", () => {
+            const table = new Table<string, ITask>();
+
+            const callback = vi.fn();
+            table.subscribe(callback);
+
+            // Multiple updates in the same batch
+            table.batch((t) => {
+                t.set("1", { title: "Task One" });
+                t.set("2", { title: "Task Two" });
+                t.set("3", { title: "Task Three" });
+            });
+
+            expect(callback).toHaveBeenCalledTimes(1);
         });
     });
 });

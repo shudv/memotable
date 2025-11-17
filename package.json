@@ -104,13 +104,7 @@
             "name": "Table",
             "path": "dist/index.js",
             "import": "{ Table }",
-            "limit": "1 kB"
-        },
-        {
-            "name": "TrackedTable",
-            "path": "dist/index.js",
-            "import": "{ TrackedTable }",
-            "limit": "1 kB"
+            "limit": "1000 B"
         }
     ],
     "packageManager": "pnpm@10.20.0",
