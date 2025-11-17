@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 // measure-size.js (ESM version)
 
+// Type declarations for Node.js test environment
+declare const console: {
+    log: (...args: any[]) => void;
+};
+
 import esbuild from "esbuild";
 import { gzipSync } from "zlib";
 import fs from "fs";
@@ -9,12 +14,12 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function formatBytes(b) {
+function formatBytes(b: number) {
     if (b < 1024) return `${b} B`;
     return `${(b / 1024).toFixed(2)} kB`;
 }
 
-async function measure(pkg, exportName) {
+async function measure(pkg: string, exportName: string | null) {
     const importLine = exportName
         ? `import { ${exportName} } from "${pkg}";\nconsole.log(typeof ${exportName});`
         : `import * as X from "${pkg}";\nconsole.log(typeof X);`;
@@ -45,9 +50,7 @@ async function measure(pkg, exportName) {
             gz: gzipSync(codeBuf).length,
         };
     } finally {
-        try {
-            fs.unlinkSync(tmpPath);
-        } catch {}
+        fs.unlinkSync(tmpPath);
     }
 }
 
@@ -56,7 +59,7 @@ async function main() {
     const [pkg, exportName] = args;
 
     if (!pkg) {
-        console.error("Usage: node measure-size.js <package> [exportName]");
+        console.log("Usage: node measure-size.js <package> [exportName]");
         process.exit(1);
     }
 
@@ -80,5 +83,5 @@ async function main() {
 }
 
 main().catch((err) => {
-    console.error("❌ Error:", err.message || err);
+    console.log("❌ Error:", err.message || err);
 });

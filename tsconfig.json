@@ -2,7 +2,7 @@
     "compilerOptions": {
         // Language and Environment
         "target": "ES2015",
-        "lib": ["ES2022", "DOM"],
+        "lib": ["ES2022"],
         "module": "ESNext",
         "jsx": "react-jsx",
         "moduleResolution": "bundler",
