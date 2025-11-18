@@ -306,19 +306,20 @@ export class Table<K, V> implements ITable<K, V> {
         const { _sortedKeys, _comparator } = this;
         if (!_sortedKeys || !_comparator) return; // No view to update
 
-        // Calculate updated keys that should be included in the view
+        // Step 1: Calculate updated keys that should be included in the view
         updatedKeys = updatedKeys.filter((key) => this._map.has(key));
         if (updatedKeys.length > 1) {
             updatedKeys.sort(this._keyComparator(_comparator));
         }
 
-        // Remove the updated keys from the current view to prepare for re-insertion in the correct order
+        // Step 2: Remove the updated keys from the current view to prepare for re-insertion in the correct order
         const updatedKeysSet = new Set(updatedKeys);
         const unchangedKeys = _sortedKeys.filter(
             (key) =>
                 this._map.get(key) /* ensure key exists in the map */ && !updatedKeysSet.has(key),
         );
 
+        // Step 3: Merge the unchanged keys and updated keys back into the sorted arrays
         this._sortedKeys = _allocateEmptyArray<K>(_sortedKeys.length);
         this._sortedValues = _allocateEmptyArray<V>(_sortedKeys.length);
 

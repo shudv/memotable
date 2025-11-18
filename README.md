@@ -47,21 +47,81 @@ It provides:
 
 ## Using memotable
 
+Simple indexing and sorting in a React component
+
 ```tsx
 const taskTable = new Table<string, Task>(); // Structure defined once
+taskTable.index((task) => task.listId); // ✅ Index enabled fast per list reads
 taskTable.sort((task1, task2) => task1.title.localeCompare(task2.title)); // ✅ Comparator applied and maintained incrementally
 
+// ✅ Simpler React component that just renders the data in a table
 function TaskList({ taskTable }) {
-    // ✅ Simpler React component that just renders the data in the table
-    const tasks = useTable(taskTable); // ✅ Subscription that is only notified when the table gets updated
+    useTable(taskTable); // ✅ Subscription that is only notified when the table gets updated
     return (
         <div>
-            {tasks.map((t) => (
+            {taskTable.values().map((t) => (
                 <Task key={t.id} {...t} />
             ))}
         </div>
     );
 }
+```
+
+Nested index, conditional sorting
+
+```ts
+type Location = {
+    id: string;
+    country: string;
+    region: string;
+    city: string;
+    district: string;
+    population: number;
+};
+
+// Comparator for sorting by population
+const sortByPopulation = (_, partition) => {
+    partition.sort((a, b) => b.population - a.population);
+};
+
+// Comparator for sorting by name
+const sortByDistrictName = (_, partition) => {
+    partition.sort((a, b) => b.district.localCompare(a.district));
+};
+
+// Define multi-level hierarchical partitioning
+table.index(
+    () => ["nested", "byCountry", "byCity"], // 3 top level partitions
+    (name, partition) => {
+        // Conditional partition initialization
+        switch (name) {
+            case "nested":
+                partition.index(
+                    // Nested level 1: Index by country
+                    (l) => l.country,
+                    (_, country) => {
+                        // Nested level 2: Within each country, index by region
+                        country.index(
+                            (l) => l.region,
+                            (_, region) => {
+                                // Nested level 3: Within each region, index by city
+                                region.index((l) => l.city, sortByPopulation);
+                            },
+                        );
+                    },
+                );
+                break;
+            case "byCountry":
+                // Custom population comparator for this partition
+                partition.index((l) => l.country, sortByPopulation);
+                break;
+            case "byCity":
+                // Custom district name compratator for this partition
+                partition.index((l) => l.city, sortByDistrictName);
+                break;
+        }
+    },
+);
 ```
 
 **Benefits:**
