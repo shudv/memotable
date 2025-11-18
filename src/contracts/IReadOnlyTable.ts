@@ -29,5 +29,8 @@ export interface IReadOnlyTable<K, V>
      */
     values(): V[];
 
+    /**
+     * Get the number of items in the table
+     */
     size(): number;
 }

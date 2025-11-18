@@ -1,24 +1,23 @@
 # memotable
 
 [![npm version](https://img.shields.io/npm/v/memotable.svg?color=007acc)](https://www.npmjs.com/package/memotable)
-[![Bundle size](https://img.shields.io/bundlephobia/minzip/memotable?label=size&color=success)](https://bundlephobia.com/package/memotable)
 [![Bundle size](https://deno.bundlejs.com/badge?q=memotable)](https://deno.bundlejs.com/badge?q=memotable)
+[![Bundle size](https://img.shields.io/bundlephobia/minzip/memotable?label=size&color=success)](https://bundlephobia.com/package/memotable)
 [![CI](https://github.com/shudv/memotable/actions/workflows/ci.yml/badge.svg)](https://github.com/shudv/memotable/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Try it live](https://img.shields.io/badge/Try%20it-live-ff69b4)](https://codesandbox.io/p/sandbox/c9lv4v)
 
-
-Reactive, indexed and ordered in-memory keyed collections — all in **~1 KB**.  
+Reactive, recurseively-indexable and sortable in-memory keyed collections — all in **~1 KB**.  
 Written in TypeScript with full type definitions. Side-effects free.
 
 > **The correct way to memoize sorted & filtered collections.**
 >
 > Most web apps don’t need collection memoization. The DOM is almost always the real bottleneck for performance.  
-> That said, when you are processing huge amounts of data (in a web app or otherwise), `memotable` gives you the _correct_ memoization primitives.
+> That said, when you are processing huge amounts of data (e.g. a realtime dashboard), `memotable` gives you the _correct_ memoizable primitive.
 
 ## Why memotable?
 
-When writing React code, most developers reach for `useMemo` to cache filtered or sorted collections - but that pattern is always a trap.
+When writing React code, most developers reach for `useMemo` to cache filtered or sorted collections - but that pattern is a subtle trap.
 
 ```tsx
 function TaskList({ tasks, filter, comparator }) {
@@ -34,9 +33,7 @@ This has two fundamental problems:
 - If you mutate the array in place, `useMemo` can silently return **stale data** because the reference didn’t change.
 - If you recreate the array on every render, you pay **full recomputation cost** every time — so your “optimization” does nothing.
 
-Most of the time, you don’t need to “memoize” collections at all — just recompute them and move on.
-But when you _do_ need to avoid recomputation — say, thousands of values with heavy filter/comparator logic —  
-you need a structure that’s actually designed for that.
+Most of the time, you don’t need to “memoize” collections at all — just recompute them and move on. But when you _do_ need to avoid recomputation — say, thousands of values with heavy indexing/comparator logic — you need a structure that’s actually designed for that.
 
 That’s what `memotable` is.
 
@@ -48,21 +45,81 @@ It provides:
 
 ## Using memotable
 
+Simple indexing and sorting in a React component
+
 ```tsx
 const taskTable = new Table<string, Task>(); // Structure defined once
+taskTable.index((task) => task.listId); // ✅ Index enabled fast per list reads
 taskTable.sort((task1, task2) => task1.title.localeCompare(task2.title)); // ✅ Comparator applied and maintained incrementally
 
+// ✅ Simpler React component that just renders the data in a table
 function TaskList({ taskTable }) {
-    // ✅ Simpler React component that just renders the data in the table
-    const tasks = useTable(taskTable); // ✅ Subscription that is only notified when the table gets updated
+    useTable(taskTable); // ✅ Subscription that is only notified when the table gets updated
     return (
         <div>
-            {tasks.map((t) => (
+            {taskTable.values().map((t) => (
                 <Task key={t.id} {...t} />
             ))}
         </div>
     );
 }
+```
+
+Nested index, conditional sorting
+
+```ts
+type Location = {
+    id: string;
+    country: string;
+    region: string;
+    city: string;
+    district: string;
+    population: number;
+};
+
+// Comparator for sorting by population
+const sortByPopulation = (_, partition) => {
+    partition.sort((a, b) => b.population - a.population);
+};
+
+// Comparator for sorting by name
+const sortByDistrictName = (_, partition) => {
+    partition.sort((a, b) => b.district.localCompare(a.district));
+};
+
+// Define multi-level hierarchical partitioning
+table.index(
+    () => ["nested", "byCountry", "byCity"], // 3 top level partitions
+    (name, partition) => {
+        // Conditional partition initialization
+        switch (name) {
+            case "nested":
+                partition.index(
+                    // Nested level 1: Index by country
+                    (l) => l.country,
+                    (_, country) => {
+                        // Nested level 2: Within each country, index by region
+                        country.index(
+                            (l) => l.region,
+                            (_, region) => {
+                                // Nested level 3: Within each region, index by city
+                                region.index((l) => l.city, sortByPopulation);
+                            },
+                        );
+                    },
+                );
+                break;
+            case "byCountry":
+                // Custom population comparator for this partition
+                partition.index((l) => l.country, sortByPopulation);
+                break;
+            case "byCity":
+                // Custom district name compratator for this partition
+                partition.index((l) => l.city, sortByDistrictName);
+                break;
+        }
+    },
+);
 ```
 
 **Benefits:**

@@ -41,7 +41,7 @@
         "size": "pnpm build && pnpm size-limit && node measure-size.ts memotable Table && pnpm size:mangle",
         "size:mangle": "npx esbuild src/index.ts --bundle --minify --mangle-props='^_' --outfile=dist/mangled.js && brotli -c dist/mangled.js | wc -c",
         "benchmark": "vitest run Table.benchmark.test.ts --testTimeout=120000 --no-coverage",
-        "ci": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm size"
+        "ci": "pnpm format && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm size"
     },
     "keywords": [
         "typescript",
@@ -116,7 +116,7 @@
             "limit": "1000 B"
         }
     ],
-    "packageManager": "pnpm@10.20.0",
+    "packageManager": "pnpm@10.22.0",
     "peerDependencies": {
         "react": "^16.8.0 || ^17.0.0 || ^18.0.0"
     },
