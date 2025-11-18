@@ -2,11 +2,13 @@
 
 [![npm version](https://img.shields.io/npm/v/memotable.svg?color=007acc)](https://www.npmjs.com/package/memotable)
 [![Bundle size](https://img.shields.io/bundlephobia/minzip/memotable?label=size&color=success)](https://bundlephobia.com/package/memotable)
+[![Bundle size](https://deno.bundlejs.com/badge?q=memotable)](https://deno.bundlejs.com/badge?q=memotable)
 [![CI](https://github.com/shudv/memotable/actions/workflows/ci.yml/badge.svg)](https://github.com/shudv/memotable/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Try it live](https://img.shields.io/badge/Try%20it-live-ff69b4)](https://codesandbox.io/p/sandbox/c9lv4v)
 
-Reactive, indexed and ordered in-memory keyed collections — all in **<1 KB**.  
+
+Reactive, indexed and ordered in-memory keyed collections — all in **~1 KB**.  
 Written in TypeScript with full type definitions. Side-effects free.
 
 > **The correct way to memoize sorted & filtered collections.**
