@@ -1,5 +1,11 @@
 # memotable
 
+## 2.1.0
+
+### Minor Changes
+
+- b29bba3: Add size() API + memoize sorted values for even faster reads
+
 ## 2.0.0
 
 ### Major Changes
