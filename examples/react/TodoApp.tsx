@@ -64,7 +64,7 @@ function ListView({ title, table }: { title: string; table: IReadOnlyTable<strin
                     </li>
                 ))}
             </ul>
-            <div style={styles.listViewCount}>Total: {table.keys().length} tasks</div>
+            <div style={styles.listViewCount}>Total: {table.size()} tasks</div>
         </div>
     );
 }
@@ -79,7 +79,7 @@ export function TodoApp() {
 
         todoTable.set(id, {
             id,
-            title: `Task ${todoTable.values().length + 1}`,
+            title: `Task ${todoTable.size() + 1}`,
             listId,
             isImportant,
             createdDate: now,
@@ -88,9 +88,8 @@ export function TodoApp() {
     };
 
     const removeTodo = () => {
-        const tasks = todoTable.values();
-        if (tasks.length > 0) {
-            todoTable.delete(tasks[tasks.length - 1].id);
+        if (todoTable.size() > 0) {
+            todoTable.delete(todoTable.values()[todoTable.size() - 1].id);
         }
     };
 
