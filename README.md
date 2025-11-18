@@ -1,23 +1,23 @@
 # memotable
 
 [![npm version](https://img.shields.io/npm/v/memotable.svg?color=007acc)](https://www.npmjs.com/package/memotable)
-[![Bundle size](https://img.shields.io/bundlephobia/minzip/memotable?label=size&color=success)](https://bundlephobia.com/package/memotable)
 [![Bundle size](https://deno.bundlejs.com/badge?q=memotable)](https://deno.bundlejs.com/badge?q=memotable)
+[![Bundle size](https://img.shields.io/bundlephobia/minzip/memotable?label=size&color=success)](https://bundlephobia.com/package/memotable)
 [![CI](https://github.com/shudv/memotable/actions/workflows/ci.yml/badge.svg)](https://github.com/shudv/memotable/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Try it live](https://img.shields.io/badge/Try%20it-live-ff69b4)](https://codesandbox.io/p/sandbox/c9lv4v)
 
-Reactive, indexed and ordered in-memory keyed collections — all in **~1 KB**.  
+Reactive, recurseively-indexable and sortable in-memory keyed collections — all in **~1 KB**.  
 Written in TypeScript with full type definitions. Side-effects free.
 
 > **The correct way to memoize sorted & filtered collections.**
 >
 > Most web apps don’t need collection memoization. The DOM is almost always the real bottleneck for performance.  
-> That said, when you are processing huge amounts of data (in a web app or otherwise), `memotable` gives you the _correct_ memoization primitives.
+> That said, when you are processing huge amounts of data (e.g. a realtime dashboard), `memotable` gives you the _correct_ memoizable primitive.
 
 ## Why memotable?
 
-When writing React code, most developers reach for `useMemo` to cache filtered or sorted collections - but that pattern is always a trap.
+When writing React code, most developers reach for `useMemo` to cache filtered or sorted collections - but that pattern is a subtle trap.
 
 ```tsx
 function TaskList({ tasks, filter, comparator }) {
@@ -33,9 +33,7 @@ This has two fundamental problems:
 - If you mutate the array in place, `useMemo` can silently return **stale data** because the reference didn’t change.
 - If you recreate the array on every render, you pay **full recomputation cost** every time — so your “optimization” does nothing.
 
-Most of the time, you don’t need to “memoize” collections at all — just recompute them and move on.
-But when you _do_ need to avoid recomputation — say, thousands of values with heavy filter/comparator logic —  
-you need a structure that’s actually designed for that.
+Most of the time, you don’t need to “memoize” collections at all — just recompute them and move on. But when you _do_ need to avoid recomputation — say, thousands of values with heavy indexing/comparator logic — you need a structure that’s actually designed for that.
 
 That’s what `memotable` is.
 
