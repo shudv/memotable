@@ -306,15 +306,17 @@ export class Table<K, V> implements ITable<K, V> {
         const { _sortedKeys, _comparator } = this;
         if (!_sortedKeys || !_comparator) return; // No view to update
 
-        // Filter and sort the updated keys based on the current comparator
+        // Calculate updated keys that should be included in the view
         updatedKeys = updatedKeys.filter((key) => this._map.has(key));
         if (updatedKeys.length > 1) {
             updatedKeys.sort(this._keyComparator(_comparator));
         }
 
+        // Remove the updated keys from the current view to prepare for re-insertion in the correct order
         const updatedKeysSet = new Set(updatedKeys);
         const unchangedKeys = _sortedKeys.filter(
-            (key) => !updatedKeysSet.has(key) && this._map.has(key),
+            (key) =>
+                this._map.get(key) /* ensure key exists in the map */ && !updatedKeysSet.has(key),
         );
 
         this._sortedKeys = _allocateEmptyArray<K>(_sortedKeys.length);
@@ -330,9 +332,7 @@ export class Table<K, V> implements ITable<K, V> {
             // Add the key from the existing view if newIds array is empty or it comes before the key from the newIds array
             if (
                 unchangedId &&
-                (!newId ||
-                    !this._map.get(newId) ||
-                    this._keyComparator(_comparator)(unchangedId, newId) <= 0)
+                (!newId || this._keyComparator(_comparator)(unchangedId, newId) <= 0)
             ) {
                 this._sortedKeys.push(unchangedId);
                 this._sortedValues.push(this._map.get(unchangedId)!);
