@@ -1,5 +1,11 @@
 # memotable
 
+## 2.2.0
+
+### Minor Changes
+
+- 5572ce7: Add utility for pretty-printing a table
+
 ## 2.1.0
 
 ### Minor Changes
