@@ -15,21 +15,24 @@ export class Table<K, V> implements ITable<K, V> {
     // A map to hold the actual values in the table
     private _map: Map<K, V> = new Map();
 
-    // Flag to indicate if a batch operation is in progress
-    private _isBatchOperationInProgress = false;
-    private _keysUpdatedInCurrentBatch = new Set<K>();
-
     public get(key: K): V | undefined {
         return this._map.get(key);
     }
 
-    public values(): V[] {
-        return this.keys().map((key) => this._map.get(key)!);
+    public keys(): K[] {
+        // Return the memoized sorted keys if available, otherwise sort at read time
+        return this._sortedKeys ? this._sortedKeys : this._sortKeys(this._comparator);
     }
 
-    public keys(): K[] {
-        // Return the materialized sorted keys if available, otherwise sort at read time
-        return this._sortedKeys ? this._sortedKeys : this._sortKeys(this._comparator);
+    public values(): V[] {
+        // Return the memoized sorted values if available, otherwise sort at read time
+        return this._sortedValues
+            ? this._sortedValues
+            : this.keys().map((key) => this._map.get(key)!);
+    }
+
+    public size(): number {
+        return this._map.size;
     }
 
     public set(key: K, value: V): void {
@@ -50,6 +53,14 @@ export class Table<K, V> implements ITable<K, V> {
     public touch(key: K) {
         this._propagateChanges([key]);
     }
+
+    // #endregion
+
+    // #region BATCHING
+
+    // Flag to indicate if a batch operation is in progress
+    private _isBatchOperationInProgress = false;
+    private _keysUpdatedInCurrentBatch = new Set<K>();
 
     public batch(fn: (t: TBatch<K, V>) => void): void {
         // Step 1: Run the batch of operations and mark start and end to disable change propagation on every set/delete
@@ -80,8 +91,9 @@ export class Table<K, V> implements ITable<K, V> {
 
     // #region SORTING
 
-    // The materialized view of the table that satisfies the current filter and comparator
+    // The memoized view of the table that satisfies the current filter and comparator
     private _sortedKeys: K[] | null = null;
+    private _sortedValues: V[] | null = null;
     private _comparator: IComparator<V> | null = null;
 
     public sort(comparator: IComparator<V> | null) {
@@ -92,11 +104,11 @@ export class Table<K, V> implements ITable<K, V> {
             partition.sort(comparator);
         }
 
-        // Step 2: Reset current materialized view, if any
-        this._sortedKeys = null;
+        // Step 2: Unmemoize the current order because comparator has changed
+        this._unmemoize();
 
-        // Step 3: Refresh the materialized view based on the new comparator
-        this._refereshMaterialization();
+        // Step 3: Refresh memoization based on the new comparator
+        this._refreshMemoization();
 
         // Step 4: Notify listeners about the change in order
         if (comparator) {
@@ -152,10 +164,14 @@ export class Table<K, V> implements ITable<K, V> {
                 ? (keyOrKeys as readonly string[])
                 : ([keyOrKeys] as readonly string[]);
         };
+
         this._partitionInitializer = partitionInitializer;
 
-        this._applyIndexUpdate(this.keys(), false); // Build index membership for all existing values
-        this._refereshMaterialization();
+        // Build index membership for all existing values
+        this._applyIndexUpdate(this.keys(), false /* values themselves are not updated */);
+
+        // Refresh memoization status because index status affects memoization
+        this._refreshMemoization();
     }
 
     public partition(name: string): IReadOnlyTable<K, V> {
@@ -263,7 +279,8 @@ export class Table<K, V> implements ITable<K, V> {
 
         // Step 2: Recursively apply the batch updates to all partitions
         for (const [name, batch] of Object.entries(batches)) {
-            this._getPartition(name).batch((t) => {
+            const partition = this._getPartition(name);
+            partition.batch((t) => {
                 for (const [key, value] of batch) {
                     if (value === null) {
                         t.delete(key);
@@ -272,6 +289,11 @@ export class Table<K, V> implements ITable<K, V> {
                     }
                 }
             });
+
+            // Cleanup empty partitions
+            if (partition.size() === 0) {
+                delete this._partitions[name];
+            }
         }
     }
 
@@ -284,10 +306,11 @@ export class Table<K, V> implements ITable<K, V> {
         const { _sortedKeys, _comparator } = this;
         if (!_sortedKeys || !_comparator) return; // No view to update
 
-        // Sort the updated keys based on the current comparator
-        updatedKeys = updatedKeys
-            .filter((key) => this._map.has(key))
-            .sort(this._keyComparator(_comparator));
+        // Filter and sort the updated keys based on the current comparator
+        updatedKeys = updatedKeys.filter((key) => this._map.has(key));
+        if (updatedKeys.length > 1) {
+            updatedKeys.sort(this._keyComparator(_comparator));
+        }
 
         const updatedKeysSet = new Set(updatedKeys);
         const unchangedKeys = _sortedKeys.filter(
@@ -295,6 +318,7 @@ export class Table<K, V> implements ITable<K, V> {
         );
 
         this._sortedKeys = _allocateEmptyArray<K>(_sortedKeys.length);
+        this._sortedValues = _allocateEmptyArray<V>(_sortedKeys.length);
 
         let i = 0; // Iterator for current view array
         let j = 0; // Iterator for updatedKeys array
@@ -311,9 +335,11 @@ export class Table<K, V> implements ITable<K, V> {
                     this._keyComparator(_comparator)(unchangedId, newId) <= 0)
             ) {
                 this._sortedKeys.push(unchangedId);
+                this._sortedValues.push(this._map.get(unchangedId)!);
                 i++;
             } else {
                 this._sortedKeys.push(newId!);
+                this._sortedValues.push(this._map.get(newId!)!);
                 j++;
             }
         }
@@ -330,23 +356,33 @@ export class Table<K, V> implements ITable<K, V> {
     }
 
     /**
-     * Refresh the materialized view of the table based on current sorting and indexing.
+     * Refresh the memoization status of the table based on current sorting and indexing.
      */
-    private _refereshMaterialization(): void {
+    private _refreshMemoization(): void {
         const { _sortedKeys, _comparator, _indexAccessor } = this;
 
-        // Table should be materialized when an on order is defined and no partitions exist
-        const shouldMaterialize = _comparator !== null && _indexAccessor === null;
+        // Table should be memoized when an on order is defined and no partitions exist
+        const shouldMemoize = _comparator !== null && _indexAccessor === null;
 
-        // Case 1: Materialize order if a comparator is set and no partitions
-        if (_sortedKeys === null && shouldMaterialize) {
-            this._sortedKeys = this._sortKeys(_comparator);
+        // Case 1: Memoize order if a comparator is set and no partitions
+        if (_sortedKeys === null && shouldMemoize) {
+            this._memoize();
         }
 
-        // Case 2: Clear materialized order if partitions exist
-        if (_sortedKeys !== null && !shouldMaterialize) {
-            this._sortedKeys = null;
+        // Case 2: Clear memoized order if partitions exist
+        if (_sortedKeys !== null && !shouldMemoize) {
+            this._unmemoize();
         }
+    }
+
+    /** Helper to unmemoize the current view */
+    private _unmemoize(): void {
+        this._sortedKeys = this._sortedValues = null;
+    }
+
+    private _memoize(): void {
+        this._sortedKeys = this._sortKeys(this._comparator);
+        this._sortedValues = this.values();
     }
 
     /* Helper to sort the keys based on the given comparator */

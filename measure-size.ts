@@ -41,7 +41,7 @@ async function measure(pkg: string, exportName: string | null) {
 
         return {
             minified: codeBuf.length,
-            gz: gzipSync(codeBuf).length,
+            gz: gzipSync(new Uint8Array(codeBuf)).length,
         };
     } finally {
         fs.unlinkSync(tmpPath);

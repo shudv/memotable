@@ -48,11 +48,11 @@ It provides:
 
 ```tsx
 const taskTable = new Table<string, Task>(); // Structure defined once
-taskTable.sort(comparator); // ✅ Comparator applied and maintained incrementally
+taskTable.sort((task1, task2) => task1.title.localeCompare(task2.title)); // ✅ Comparator applied and maintained incrementally
 
 function TaskList({ taskTable }) {
     // ✅ Simpler React component that just renders the data in the table
-    const tasks = useTable(taskTable); // ✅ Subscription that is only notified when the table gets updated (referential stability of `taskTable` is inconsequential)
+    const tasks = useTable(taskTable); // ✅ Subscription that is only notified when the table gets updated
     return (
         <div>
             {tasks.map((t) => (
@@ -112,15 +112,6 @@ You _don't_ need it for simple apps.
 
 It's **not** a full state management system like MobX or Zustand. Instead, it's a **data structure primitive** — designed to integrate _with_ those systems or stand alone for efficient in-memory computation.
 
-## Technical Design
-
-Memotable uses **partitioned tables** with **incremental propagation** to achieve efficient derived views:
-
-- **Partitioning**: Each index splits data into multiple sub-tables (partitions) based on key extraction. These partitions can themselves be indexed further, creating a recursive tree structure.
-- **Incremental updates**: When values change, only affected partitions recalculate their state. Filters and sorts propagate changes without full re-computation.
-- **Materialized views**: Filtered and sorted results are cached in memory for instant reads. Materialization can be toggled per partition to balance memory usage vs. read performance.
-- **Subscription model**: Fine-grained listeners at any level (root table, index, or partition) receive updates only when their specific view changes.
-
 ## Benchmarks
 
 Memotable is optimized for **read-heavy workloads**. The tradeoff: slower writes, faster reads.
@@ -129,12 +120,12 @@ Memotable is optimized for **read-heavy workloads**. The tradeoff: slower writes
 
 Scenario: 50,000 tasks with list-based indexing, importance filtering, and two-factor sorting (importance + timestamp). Simulates a typical task management app with 500 reads and 100 writes.
 
-| Operation    | memotable   | Plain JS    | Difference       |
-| ------------ | ----------- | ----------- | ---------------- |
-| Initial load | 89.6ms      | 5.3ms       | 16.9x slower     |
-| 100 edits    | 16.3ms      | 0.1ms       | 153.3x slower    |
-| 500 reads    | 8.5ms       | 306.1ms     | **36.2x faster** |
-| **Total**    | **114.4ms** | **311.6ms** | **3.3x faster**  |
+| Operation    | memotable  | Plain JS    | Difference      |
+| ------------ | ---------- | ----------- | --------------- |
+| Initial load | 59.4ms     | 4.5ms       |                 |
+| 100 edits    | 30.5ms     | 0.1ms       |                 |
+| 500 reads    | 0.1ms      | 367.1ms     |                 |
+| **Total**    | **90.1ms** | **371.7ms** | **4.1x faster** |
 
 _Run `pnpm benchmark` to test on your machine._
 
@@ -149,7 +140,7 @@ import { useTable } from "memotable/react";
 
 function MyComponent({ table }) {
     useTable(table); // Auto-subscribes, triggers re-render on change and cleans up on unmount
-    return <div>{table.keys().length} values</div>;
+    return <div>{table.size()} values</div>;
 }
 ```
 

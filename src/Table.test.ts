@@ -48,6 +48,23 @@ describe("Table", () => {
 
             expect(table.keys().sort()).toEqual(["1", "2"]);
         });
+
+        test("size() - should return the number of items in the table", () => {
+            const table = new Table<string, ITask>();
+            expect(table.size()).toBe(0);
+
+            table.set("1", { title: "Task One" });
+            expect(table.size()).toBe(1);
+
+            table.set("2", { title: "Task Two" });
+            expect(table.size()).toBe(2);
+
+            table.delete("1");
+            expect(table.size()).toBe(1);
+
+            table.delete("2");
+            expect(table.size()).toBe(0);
+        });
     });
 
     describe("Subscriptions", () => {
@@ -404,8 +421,8 @@ describe("Table", () => {
         });
     });
 
-    describe("Materialization", () => {
-        test("should materialize sorted keys for terminal partitions", () => {
+    describe("Memoization", () => {
+        test("should memoize sorted keys for terminal partitions", () => {
             const table = new Table<string, IPerson>();
             table.set("1", { name: "Alice", age: 30 });
             table.set("2", { name: "Bob", age: 25 });
@@ -425,7 +442,7 @@ describe("Table", () => {
             expect(table.partition("Over30").keys()).toBe(table.partition("Over30").keys());
         });
 
-        test("should un-materialize keys when sort is cleared", () => {
+        test("should un-memoize keys when sort is cleared", () => {
             const table = new Table<string, IPerson>();
             table.set("1", { name: "Alice", age: 30 });
             table.set("2", { name: "Bob", age: 25 });
@@ -443,7 +460,7 @@ describe("Table", () => {
             expect(table.keys()).not.toBe(table.keys());
         });
 
-        test("should un-materialize keys when partitioning is applied", () => {
+        test("should un-memoize keys when partitioning is applied", () => {
             const table = new Table<string, IPerson>();
             table.set("1", { name: "Alice", age: 30 });
             table.set("2", { name: "Bob", age: 25 });

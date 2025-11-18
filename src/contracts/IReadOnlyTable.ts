@@ -20,12 +20,14 @@ export interface IReadOnlyTable<K, V>
     get(key: K): V | undefined;
 
     /**
+     * Get all keys in the table
+     */
+    keys(): K[];
+
+    /**
      * Get all values in the table
      */
     values(): V[];
 
-    /**
-     * Get all keys in the table
-     */
-    keys(): K[];
+    size(): number;
 }
