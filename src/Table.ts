@@ -189,22 +189,18 @@ export class Table<K, V> implements ITable<K, V> {
     // #region PRIVATE HELPERS
 
     private _getPartition(name: string): ITable<K, V> {
-        return (
-            this._partitions[name] ??
-            (() => {
-                // Step 1: Create a new partition table
-                const table = new Table<K, V>();
+        return (this._partitions[name] ??= (() => {
+            // Step 1: Create a new partition table
+            const table = new Table<K, V>();
 
-                // Step 2: Propagate parent sorting to the partition
-                table.sort(this._comparator);
+            // Step 2: Propagate parent sorting to the partition
+            table.sort(this._comparator);
 
-                // Step 3: Initialize the partition if an initializer is provided
-                this._partitionInitializer?.(name, table);
+            // Step 3: Initialize the partition if an initializer is provided
+            this._partitionInitializer?.(name, table);
 
-                // Step 4: Store and return the partition
-                return (this._partitions[name] = table);
-            })()
-        );
+            return table;
+        })());
     }
 
     /**
