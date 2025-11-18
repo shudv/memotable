@@ -7,3 +7,4 @@ export { type IObservableTable, type IDelta } from "./contracts/IObservableTable
 
 // Implementations
 export { Table } from "./Table";
+export { print } from "./TableUtilities";

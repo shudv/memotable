@@ -7,7 +7,6 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Try it live](https://img.shields.io/badge/Try%20it-live-ff69b4)](https://codesandbox.io/p/sandbox/c9lv4v)
 
-
 Reactive, indexed and ordered in-memory keyed collections — all in **~1 KB**.  
 Written in TypeScript with full type definitions. Side-effects free.
 
