@@ -113,7 +113,7 @@
             "name": "Table",
             "path": "dist/index.js",
             "import": "{ Table }",
-            "limit": "1000 B"
+            "limit": "1500 B"
         }
     ],
     "packageManager": "pnpm@10.22.0",

@@ -52,14 +52,14 @@ interface AggregatedResult {
 // Default configuration
 const LoadFactor = 1;
 const IterationCount = 3;
-const ReadWriteRatio = 5; // Must be greater than 1 to simulate read-heavy workloads
+const ReadWriteRatio = 4; // Must be greater than 1 to simulate read-heavy workloads
 const DEFAULT_CONFIG: BenchmarkConfig = {
-    numLists: 50 * LoadFactor,
+    numLists: 50,
     tasksPerList: 1000 * LoadFactor,
     completionRate: 0.3,
     importantRate: 0.1,
-    numEdits: 100 * LoadFactor,
-    numReads: ReadWriteRatio * 100 * LoadFactor,
+    numEdits: Math.floor((1000 * LoadFactor) / (ReadWriteRatio + 1)),
+    numReads: Math.floor((ReadWriteRatio * 1000 * LoadFactor) / (ReadWriteRatio + 1)),
     iterations: IterationCount, // Number of benchmark iterations
 };
 
@@ -69,25 +69,28 @@ const DEFAULT_CONFIG: BenchmarkConfig = {
 
 function generateTasks(config: BenchmarkConfig): Task[] {
     const tasks: Task[] = [];
-    const totalTasks = config.numLists * config.tasksPerList;
     const now = Date.now();
 
-    for (let i = 0; i < totalTasks; i++) {
-        const listId = `list-${Math.floor(i / config.tasksPerList)}`;
+    for (let i = 0; i < config.numLists; i++) {
+        const listId = `list-${i}`;
+
         const isCompleted = Math.random() < config.completionRate;
         const isImportant = Math.random() < config.importantRate;
 
-        tasks.push({
-            id: `task-${i}`,
-            listId,
-            title: `Task ${i}: ${generateRandomTitle()}`,
-            description: `Description for task ${i}`,
-            createdAt: now - i * 1000, // Older tasks have earlier timestamps
-            completedAt: isCompleted ? now - Math.random() * 1000000 : null,
-            isCompleted,
-            isImportant,
-            priority: Math.floor(Math.random() * 5) + 1,
-        });
+        for (let j = 0; j < config.tasksPerList; j++) {
+            const taskIndex = i * config.tasksPerList + j;
+            tasks.push({
+                id: `task-${taskIndex}`,
+                listId,
+                title: `Task ${taskIndex}: ${generateRandomTitle()}`,
+                description: `Description for task ${taskIndex}`,
+                createdAt: now - taskIndex * 1000, // Older tasks have earlier timestamps
+                completedAt: isCompleted ? now - Math.random() * 1000000 : null,
+                isCompleted,
+                isImportant,
+                priority: Math.floor(Math.random() * 5) + 1,
+            });
+        }
     }
 
     return tasks;
@@ -132,7 +135,7 @@ class VanillaImplementation {
 // Scenario 2: Table-based implementations
 // ============================================================================
 
-function setupTableImplementationByList(tasks: Task[]): Table<string, Task> {
+function setupTableImplementation(tasks: Task[]): Table<string, Task> {
     const table = new Table<string, Task>();
 
     // Populate the table
@@ -146,7 +149,12 @@ function setupTableImplementationByList(tasks: Task[]): Table<string, Task> {
     table.index(
         (task) => task.listId,
         (_, partition) => {
-            partition.index((task) => (!task.isCompleted ? "Active" : undefined));
+            partition.index(
+                (task) => (!task.isCompleted ? "Active" : undefined),
+                (_, partition) => {
+                    partition.memo();
+                },
+            );
         },
     );
 
@@ -227,7 +235,7 @@ function benchmarkVanilla(tasks: Task[], config: BenchmarkConfig): BenchmarkResu
 function benchmarkMemoTable(tasks: Task[], config: BenchmarkConfig): BenchmarkResult {
     // Create two separate tables - one indexed by list, one by importance
     const loadStart = performance.now();
-    const tableByList = setupTableImplementationByList(tasks);
+    const tableByList = setupTableImplementation(tasks);
     const loadEnd = performance.now();
 
     // Benchmark edits - need to update both tables
@@ -260,10 +268,13 @@ function benchmarkMemoTable(tasks: Task[], config: BenchmarkConfig): BenchmarkRe
     const editEnd = performance.now();
 
     // Benchmark reads
+    let _counter = 0;
     const readStart = performance.now();
     for (let i = 0; i < config.numReads; i++) {
         const listId = `list-${Math.floor(Math.random() * config.numLists)}`;
-        tableByList.partition(listId).partition("Active").values();
+        for (const _ of tableByList.partition(listId).partition("Active").values()) {
+            _counter++;
+        }
     }
     const readEnd = performance.now();
 

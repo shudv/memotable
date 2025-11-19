@@ -1,4 +1,3 @@
-import { IReadOnlyTable } from "./contracts/IReadOnlyTable";
 import { Table } from "./Table";
 import { print } from "./TableUtilities";
 
@@ -16,8 +15,8 @@ describe("Table", () => {
             table.set("3", { title: "Task Three" });
 
             expect(table.get("1")?.title).toEqual("Task One");
-            expect(table.keys()).toEqual(["1", "2", "3"]);
-            expect(table.values().length).toEqual(3);
+            expect(table.keys()).toYieldOrdered(["1", "2", "3"]);
+            expect(table.size).toEqual(3);
         });
 
         test("delete() - should remove value", () => {
@@ -36,11 +35,8 @@ describe("Table", () => {
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
 
-            const values = table.values();
-            expect(values.length).toBe(2);
-            expect(values).toEqual(
-                expect.arrayContaining([{ title: "Task One" }, { title: "Task Two" }]),
-            );
+            expect(table.size).toBe(2);
+            expect(table.values()).toYield([{ title: "Task One" }, { title: "Task Two" }]);
         });
 
         test("keys() - should return all keys", () => {
@@ -48,24 +44,106 @@ describe("Table", () => {
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
 
-            expect(table.keys().sort()).toEqual(["1", "2"]);
+            expect(table.keys()).toYield(["1", "2"]);
         });
 
-        test("size() - should return the number of items in the table", () => {
+        test("size - should return the number of items in the table", () => {
             const table = new Table<string, ITask>();
-            expect(table.size()).toBe(0);
+            expect(table.size).toBe(0);
 
             table.set("1", { title: "Task One" });
-            expect(table.size()).toBe(1);
+            expect(table.size).toBe(1);
 
             table.set("2", { title: "Task Two" });
-            expect(table.size()).toBe(2);
+            expect(table.size).toBe(2);
 
             table.delete("1");
-            expect(table.size()).toBe(1);
+            expect(table.size).toBe(1);
 
             table.delete("2");
-            expect(table.size()).toBe(0);
+            expect(table.size).toBe(0);
+        });
+
+        test("has() - should check for existence of a key", () => {
+            const table = new Table<string, ITask>();
+            expect(table.has("1")).toBe(false);
+            table.set("1", { title: "Task One" });
+            expect(table.has("1")).toBe(true);
+            expect(table.has("2")).toBe(false);
+        });
+
+        test("entries() - should return all key/value pairs", () => {
+            const table = new Table<string, ITask>();
+            table.set("1", { title: "Task One" });
+            table.set("2", { title: "Task Two" });
+
+            expect(table.entries()).toYield([
+                ["1", { title: "Task One" }],
+                ["2", { title: "Task Two" }],
+            ]);
+        });
+
+        test("default iterator - should iterate over key/value pairs", () => {
+            const table = new Table<string, ITask>();
+            table.set("1", { title: "Task One" });
+            table.set("2", { title: "Task Two" });
+
+            const entries: [string, ITask][] = [];
+            for (const entry of table) {
+                entries.push(entry);
+            }
+            expect(entries).toEqual([
+                ["1", { title: "Task One" }],
+                ["2", { title: "Task Two" }],
+            ]);
+        });
+
+        test("forEach() - should execute callback for each key/value pair", () => {
+            const table = new Table<string, ITask>();
+
+            table.set("1", { title: "Task One" });
+            table.set("2", { title: "Task Two" });
+
+            const callback = vi.fn();
+            table.forEach(callback);
+            expect(callback).toHaveBeenCalledWith({ title: "Task One" }, "1", table);
+            expect(callback).toHaveBeenCalledWith({ title: "Task Two" }, "2", table);
+        });
+
+        test("toArray() - should return values as an array", () => {
+            const table = new Table<string, ITask>();
+
+            table.set("1", { title: "Task One" });
+            table.set("2", { title: "Task Two" });
+
+            expect(table.toArray()).toEqual([{ title: "Task One" }, { title: "Task Two" }]);
+        });
+
+        test("clear() - should remove all items and clear indexing and sorting", () => {
+            const table = new Table<string, ITask>();
+
+            table.set("1", { title: "Task One" });
+            table.set("2", { title: "Task Two" });
+
+            table.sort((a, b) => a.title.localeCompare(b.title));
+            table.index((value) => value.title.split(" "));
+
+            expect(table.partition("Task").size).toBe(2);
+            expect(table.partition("Task").values()).toYield([
+                { title: "Task One" },
+                { title: "Task Two" },
+            ]);
+
+            table.clear();
+            expect(table.size).toBe(0);
+
+            table.set("1", { title: "Task One" });
+            table.set("2", { title: "Task Two" });
+            table.set("3", { title: "Task Three" });
+
+            // indexing and ordering should not work after clear
+            expect(table.partition("Task").size).toBe(0);
+            expect(table.partition("Task").values()).toYield([]);
         });
     });
 
@@ -135,6 +213,52 @@ describe("Table", () => {
         });
     });
 
+    describe("Memoization", () => {
+        test("should memoize partitions which opt-in", () => {
+            const table = new Table<string, IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+            table.set("3", { name: "Charlie", age: 35 });
+            table.set("4", { name: "Dave", age: 20 });
+
+            table.index(
+                (person) => (person.age < 30 ? "Under30" : "Over30"),
+                (name, partition) => {
+                    partition.memo(name === "Under30"); // Enable memoization for partitions
+                },
+            );
+
+            // Apply sort and track comparator calls
+            table.sort((a, b) => a.age - b.age);
+
+            expect(table.isMemoized()).toBe(false);
+            expect(table.partition("Under30").isMemoized()).toBe(true);
+            expect(table.partition("Over30").isMemoized()).toBe(false);
+
+            // Memoize the entire table
+            table.memo();
+
+            expect(table.isMemoized()).toBe(true);
+            expect(table.partition("Under30").isMemoized()).toBe(true);
+            expect(table.partition("Over30").isMemoized()).toBe(true);
+
+            expect(table.keys()).toYieldOrdered(["4", "2", "1", "3"]);
+            expect(table.values()).toYieldOrdered([
+                { name: "Dave", age: 20 },
+                { name: "Bob", age: 25 },
+                { name: "Alice", age: 30 },
+                { name: "Charlie", age: 35 },
+            ]);
+
+            // Unmemoize the entire table
+            table.memo(false);
+
+            expect(table.isMemoized()).toBe(false);
+            expect(table.partition("Under30").isMemoized()).toBe(false);
+            expect(table.partition("Over30").isMemoized()).toBe(false);
+        });
+    });
+
     describe("Indexing", () => {
         test("should create partitions based on index definition", () => {
             const table = new Table<string, ITaggedValue>();
@@ -144,10 +268,10 @@ describe("Table", () => {
 
             table.index((value) => value.tags);
 
-            expect(table.partition("A").keys()).toEqual(["1"]);
-            expect(table.partition("B").keys().sort()).toEqual(["1", "2"]);
-            expect(table.partition("C").keys().sort()).toEqual(["2", "3"]);
-            expect(table.partition("D").keys()).toEqual(["3"]);
+            expect(table.partition("A").keys()).toYield(["1"]);
+            expect(table.partition("B").keys()).toYield(["1", "2"]);
+            expect(table.partition("C").keys()).toYield(["2", "3"]);
+            expect(table.partition("D").keys()).toYield(["3"]);
         });
 
         test("partitions() - should return all non-empty partition names", () => {
@@ -177,25 +301,25 @@ describe("Table", () => {
             table.set("1", { tags: ["A", "B"] });
             table.set("2", { tags: ["B", "C"] });
 
-            expect(table.partition("A").keys()).toEqual(["1"]);
-            expect(table.partition("B").keys().sort()).toEqual(["1", "2"]);
-            expect(table.partition("C").keys()).toEqual(["2"]);
+            expect(table.partition("A").keys()).toYield(["1"]);
+            expect(table.partition("B").keys()).toYield(["1", "2"]);
+            expect(table.partition("C").keys()).toYield(["2"]);
 
             // Update value
             table.set("2", { tags: ["C", "D"] });
 
-            expect(table.partition("A").keys()).toEqual(["1"]);
-            expect(table.partition("B").keys()).toEqual(["1"]); // 2 removed
-            expect(table.partition("C").keys()).toEqual(["2"]);
-            expect(table.partition("D").keys()).toEqual(["2"]);
+            expect(table.partition("A").keys()).toYield(["1"]);
+            expect(table.partition("B").keys()).toYield(["1"]); // 2 removed
+            expect(table.partition("C").keys()).toYield(["2"]);
+            expect(table.partition("D").keys()).toYield(["2"]);
 
             // Delete value
             table.delete("1");
 
-            expect(table.partition("A").keys()).toEqual([]);
-            expect(table.partition("B").keys()).toEqual([]);
-            expect(table.partition("C").keys()).toEqual(["2"]);
-            expect(table.partition("D").keys()).toEqual(["2"]);
+            expect(table.partition("A").keys()).toYield([]);
+            expect(table.partition("B").keys()).toYield([]);
+            expect(table.partition("C").keys()).toYield(["2"]);
+            expect(table.partition("D").keys()).toYield(["2"]);
         });
 
         test("eager subscriptions - should be able to subscribe before a value is added", () => {
@@ -218,7 +342,7 @@ describe("Table", () => {
             table.index((value) => value.tags);
 
             const partition = table.partition("NonExistent");
-            expect(partition.keys()).toEqual([]);
+            expect(partition.keys()).toYield([]);
         });
 
         test("should handle null/undefined values in index definition", () => {
@@ -239,9 +363,9 @@ describe("Table", () => {
             table.set("2", { tags: ["B", "SKIP"] });
             table.set("3", { tags: ["C"] });
 
-            expect(table.partition("A").keys()).toEqual([]);
-            expect(table.partition("B").keys()).toEqual([]);
-            expect(table.partition("C").keys()).toEqual(["3"]);
+            expect(table.partition("A").keys()).toYield([]);
+            expect(table.partition("B").keys()).toYield([]);
+            expect(table.partition("C").keys()).toYield(["3"]);
         });
 
         test("should re-index when index definition is changed", () => {
@@ -252,17 +376,17 @@ describe("Table", () => {
 
             table.index((value) => value.tags);
 
-            expect(table.partition("A").keys()).toEqual(["1"]);
-            expect(table.partition("B").keys()).toEqual(["2"]);
-            expect(table.partition("C").keys()).toEqual(["3"]);
+            expect(table.partition("A").keys()).toYield(["1"]);
+            expect(table.partition("B").keys()).toYield(["2"]);
+            expect(table.partition("C").keys()).toYield(["3"]);
 
             // Change index definition
             table.index((value) => value.tags.map((tag) => (tag === "A" ? tag + "*" : tag)));
 
-            expect(table.partition("A").keys()).toEqual([]);
-            expect(table.partition("A*").keys()).toEqual(["1"]); // Re-indexed
-            expect(table.partition("B").keys()).toEqual(["2"]);
-            expect(table.partition("C").keys()).toEqual(["3"]);
+            expect(table.partition("A").keys()).toYield([]);
+            expect(table.partition("A*").keys()).toYield(["1"]); // Re-indexed
+            expect(table.partition("B").keys()).toYield(["2"]);
+            expect(table.partition("C").keys()).toYield(["3"]);
         });
 
         test("should delete partitions when index is removed", () => {
@@ -272,14 +396,14 @@ describe("Table", () => {
 
             table.index((value) => value.tags);
 
-            expect(table.partition("A").keys()).toEqual(["1"]);
-            expect(table.partition("B").keys()).toEqual(["2"]);
+            expect(table.partition("A").keys()).toYield(["1"]);
+            expect(table.partition("B").keys()).toYield(["2"]);
 
             // Remove indexing
             table.index(null);
 
-            expect(table.partition("A").keys()).toEqual([]);
-            expect(table.partition("B").keys()).toEqual([]);
+            expect(table.partition("A").keys()).toYield([]);
+            expect(table.partition("B").keys()).toYield([]);
         });
 
         test("creating filtered views via indexing", () => {
@@ -292,16 +416,16 @@ describe("Table", () => {
             // Create a filtered view that only includes values with "include" tag
             table.index((value) => (value.tags.includes("include") ? "Included" : undefined));
 
-            expect(table.partition("Included").keys().sort()).toEqual(["1", "3"]);
-            expect(table.partition("Excluded").keys()).toEqual([]);
+            expect(table.partition("Included").keys()).toYield(["1", "3"]);
+            expect(table.partition("Excluded").keys()).toYield([]);
 
             // Update a value to move it into the included partition
             table.set("2", { tags: ["include"] });
-            expect(table.partition("Included").keys().sort()).toEqual(["1", "2", "3"]);
+            expect(table.partition("Included").keys()).toYield(["1", "2", "3"]);
 
             // Update a value to move it out of the included partition
             table.set("1", { tags: ["exclude"] });
-            expect(table.partition("Included").keys().sort()).toEqual(["2", "3"]);
+            expect(table.partition("Included").keys()).toYield(["2", "3"]);
         });
 
         test("custom partition initialization", () => {
@@ -326,8 +450,8 @@ describe("Table", () => {
                 },
             );
 
-            expect(table.partition("A").keys()).toEqual(["3", "1"]); // Sorted by tag count ascending
-            expect(table.partition("IGNORE").keys()).toEqual(["1", "2"]); // Sorted by tag count descending
+            expect(table.partition("A").keys()).toYield(["3", "1"]); // Sorted by tag count ascending
+            expect(table.partition("IGNORE").keys()).toYield(["1", "2"]); // Sorted by tag count descending
         });
 
         test("rich hierarchical partitioning - geographic organization", () => {
@@ -396,14 +520,6 @@ describe("Table", () => {
                 table.set(loc.id, loc);
             }
 
-            // Comparator to sort by population descending
-            const sortByPopulation: (
-                name: string,
-                partition: IReadOnlyTable<string, Location>,
-            ) => void = (_, partition) => {
-                partition.sort((a, b) => b.population - a.population);
-            };
-
             // Define multi-level hierarchical partitioning
             table.index(
                 () => ["nested", "byCountry", "byCity"], // 3 top level partitions
@@ -419,17 +535,42 @@ describe("Table", () => {
                                         (l) => l.region,
                                         (_, region) => {
                                             // Nested level 3: Within each region, index by city
-                                            region.index((l) => l.city, sortByPopulation);
+                                            region.index(
+                                                (l) => l.city,
+                                                (_, city) => {
+                                                    // Sort each city partition by population
+                                                    city.sort(
+                                                        (a, b) => b.population - a.population,
+                                                    );
+                                                },
+                                            );
                                         },
                                     );
                                 },
                             );
                             break;
                         case "byCountry":
-                            partition.index((l) => l.country, sortByPopulation);
+                            partition.index(
+                                (l) => l.country,
+                                (countryName, country) => {
+                                    // Sort each country partition by population
+                                    country.sort((a, b) => b.population - a.population);
+
+                                    // IMPORTANT: Memoize only (large + frequently read) partitions
+                                    if (countryName === "India" || countryName === "USA") {
+                                        country.memo();
+                                    }
+                                },
+                            );
                             break;
                         case "byCity":
-                            partition.index((l) => l.city, sortByPopulation);
+                            partition.index(
+                                (l) => l.city,
+                                (_, city) => {
+                                    // Sort each city partition by name
+                                    city.sort((a, b) => a.city.localeCompare(b.city));
+                                },
+                            );
                             break;
                     }
                 },
@@ -443,13 +584,18 @@ describe("Table", () => {
     describe("Sorting", () => {
         test("sorting values by comparator", () => {
             const table = new Table<string, IPerson>();
+            table.memo(true);
             table.set("1", { name: "Alice", age: 30 });
             table.set("2", { name: "Bob", age: 25 });
             table.set("3", { name: "Charlie", age: 35 });
 
             table.sort((a, b) => a.age - b.age);
 
-            expect(table.keys()).toEqual(["2", "1", "3"]);
+            expect(table.keys()).toYieldOrdered(["2", "1", "3"]);
+
+            table.set("3", { name: "Charlie", age: 10 });
+
+            expect(table.keys()).toYieldOrdered(["3", "2", "1"]);
         });
 
         test("sort order should be cleared when comparator is null", () => {
@@ -458,30 +604,53 @@ describe("Table", () => {
             table.set("2", { name: "Bob", age: 25 });
 
             table.sort((a, b) => a.age - b.age);
-            expect(table.keys()).toEqual(["2", "1"]);
+            expect(table.keys()).toYieldOrdered(["2", "1"]);
             table.sort(null);
 
             table.set("0", { name: "Someone", age: 35 });
             table.set("3", { name: "Someone", age: 10 });
 
             // Not a full proof test but will typically be true
-            expect(table.keys()).not.toEqual(["3", "2", "1", "0"]);
+            expect(table.keys()).not.toYieldOrdered(["3", "2", "1", "0"]);
         });
 
-        test("sort order consistency when values are added, updated or removed", () => {
+        test("sort order consistency when values are added, updated or removed when memoized", () => {
             const table = new Table<string, IPerson>();
             table.set("1", { name: "Alice", age: 30 });
             table.set("2", { name: "Bob", age: 25 });
             table.set("3", { name: "Charlie", age: 35 });
 
             table.sort((a, b) => a.age - b.age);
-            expect(table.keys()).toEqual(["2", "1", "3"]);
+            table.memo(); // Enable memoization to retain order
 
-            table.set("3", { name: "Charlie", age: 15 });
-            table.delete("2");
-            table.set("4", { name: "Dave", age: 40 });
+            expect(table.keys()).toYieldOrdered(["2", "1", "3"]);
 
-            expect(table.keys()).toEqual(["3", "1", "4"]);
+            table.batch(() => {
+                table.set("3", { name: "Charlie", age: 15 });
+                table.delete("2");
+                table.set("4", { name: "Dave", age: 40 });
+            });
+
+            expect(table.keys()).toYieldOrdered(["3", "1", "4"]);
+        });
+
+        test("sort order consistency when values are added, updated or removed when not memoized", () => {
+            const table = new Table<string, IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+            table.set("3", { name: "Charlie", age: 35 });
+
+            table.sort((a, b) => a.age - b.age);
+
+            expect(table.keys()).toYieldOrdered(["2", "1", "3"]);
+
+            table.batch(() => {
+                table.set("3", { name: "Charlie", age: 15 });
+                table.delete("2");
+                table.set("4", { name: "Dave", age: 40 });
+            });
+
+            expect(table.keys()).toYieldOrdered(["3", "1", "4"]);
         });
 
         test("should notify listeners when sort is applied (with empty delta because values themselves weren't updated)", () => {
@@ -519,74 +688,16 @@ describe("Table", () => {
             table.set("3", { name: "Charlie", age: 35 });
             table.set("4", { name: "Dave", age: 20 });
 
-            expect(table.keys()).toEqual(["4", "2", "1", "3"]);
-            expect(table.partition("Under30").keys()).toEqual(["4", "2"]);
-            expect(table.partition("Over30").keys()).toEqual(["1", "3"]);
+            expect(table.keys()).toYieldOrdered(["4", "2", "1", "3"]);
+            expect(table.partition("Under30").keys()).toYieldOrdered(["4", "2"]);
+            expect(table.partition("Over30").keys()).toYieldOrdered(["1", "3"]);
 
             // Apply new sort at root
             table.sort((a, b) => b.age - a.age);
 
-            expect(table.keys()).toEqual(["3", "1", "2", "4"]);
-            expect(table.partition("Under30").keys()).toEqual(["2", "4"]);
-            expect(table.partition("Over30").keys()).toEqual(["3", "1"]);
-        });
-    });
-
-    describe("Memoization", () => {
-        test("should memoize sorted keys for terminal partitions", () => {
-            const table = new Table<string, IPerson>();
-            table.set("1", { name: "Alice", age: 30 });
-            table.set("2", { name: "Bob", age: 25 });
-            table.set("3", { name: "Charlie", age: 35 });
-            table.set("4", { name: "Dave", age: 20 });
-
-            table.index((person) => (person.age < 30 ? "Under30" : "Over30"));
-
-            // Apply sort
-            table.sort((a, b) => a.age - b.age);
-
-            // Root should  not be materialized because it has partitions
-            expect(table.keys()).not.toBe(table.keys()); // Evey read returns a new reference (indirect proxy to test whether materialization happened)
-
-            // Terminal partitions should be materialized
-            expect(table.partition("Under30").keys()).toBe(table.partition("Under30").keys());
-            expect(table.partition("Over30").keys()).toBe(table.partition("Over30").keys());
-        });
-
-        test("should un-memoize keys when sort is cleared", () => {
-            const table = new Table<string, IPerson>();
-            table.set("1", { name: "Alice", age: 30 });
-            table.set("2", { name: "Bob", age: 25 });
-
-            // Apply sort
-            table.sort((a, b) => a.age - b.age);
-
-            // Keys should be materialized
-            expect(table.keys()).toBe(table.keys());
-
-            // Clear sort
-            table.sort(null);
-
-            // Keys should no longer be materialized
-            expect(table.keys()).not.toBe(table.keys());
-        });
-
-        test("should un-memoize keys when partitioning is applied", () => {
-            const table = new Table<string, IPerson>();
-            table.set("1", { name: "Alice", age: 30 });
-            table.set("2", { name: "Bob", age: 25 });
-
-            // Apply sort
-            table.sort((a, b) => a.age - b.age);
-
-            // Keys should be materialized
-            expect(table.keys()).toBe(table.keys());
-
-            // Apply partitioning
-            table.index((person) => (person.age < 30 ? "Under30" : "Over30"));
-
-            // Keys should no longer be materialized
-            expect(table.keys()).not.toBe(table.keys());
+            expect(table.keys()).toYieldOrdered(["3", "1", "2", "4"]);
+            expect(table.partition("Under30").keys()).toYieldOrdered(["2", "4"]);
+            expect(table.partition("Over30").keys()).toYieldOrdered(["3", "1"]);
         });
     });
 
@@ -625,7 +736,7 @@ describe("Table", () => {
             table.set("Y", { name: "Y", age: 15 });
             table.set("Z", { name: "Z", age: 10 });
 
-            expect(table.partition("Allowed").keys()).toEqual(["X", "Y", "C", "D", "Z"]);
+            expect(table.partition("Allowed").keys()).toYieldOrdered(["X", "Y", "C", "D", "Z"]);
 
             // Now, tweak the config to change index and sort behavior and touch affected keys
             table.batch((t) => {
@@ -639,7 +750,7 @@ describe("Table", () => {
             });
 
             // Validate updated positions
-            expect(table.partition("Allowed").keys()).toEqual(["Y", "Z", "A", "D", "X"]);
+            expect(table.partition("Allowed").keys()).toYieldOrdered(["Y", "Z", "A", "D", "X"]);
         });
     });
 

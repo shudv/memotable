@@ -1,4 +1,4 @@
-import { IReadOnlyTable } from "./contracts/IReadOnlyTable";
+import { IReadonlyTable } from "./contracts/IReadonlyTable";
 
 /**
  * Utility function to print the structure of a table and its partitions to the console.
@@ -7,7 +7,7 @@ import { IReadOnlyTable } from "./contracts/IReadOnlyTable";
  * @param title Title of the root table
  */
 export function print<K, V>(
-    table: IReadOnlyTable<K, V>,
+    table: IReadonlyTable<K, V>,
     toString: (value: V) => string,
     title: string = "root",
 ): void {
@@ -22,21 +22,21 @@ export function print<K, V>(
  * @param isLast Whether this is the last partition at the current level
  */
 function printTable<K, V>(
-    table: IReadOnlyTable<K, V>,
+    table: IReadonlyTable<K, V>,
     toString: (value: V) => string,
     title: string,
     indent: string,
     isLast: boolean,
 ): void {
     const prefix = indent + (isLast ? "└── " : "├── ");
-    console.log(`${prefix}${title} (${table.size()})`);
+    console.log(`${prefix}${title} (${table.size})` + (table.isMemoized() ? " [*]" : ""));
 
     const partitions = table.partitions();
     const childIndent = indent + (isLast ? "    " : "│   ");
 
-    if (partitions.length === 0 && table.size() > 0) {
+    if (partitions.length === 0 && table.size > 0) {
         // Leaf node - print the items
-        const values = table.values();
+        const values = table.toArray();
         for (let i = 0; i < values.length; i++) {
             const value = values[i]!;
             const isLastItem = i === values.length - 1;

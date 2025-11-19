@@ -1,15 +1,22 @@
-import { IReadOnlyTable } from "./IReadOnlyTable";
+import { IReadonlyTable } from "./IReadonlyTable";
 
 /**
- * Defines an index configuration.
+ * Defines how values in a table are indexed and partitioned.
  *
- * An index definition is a simple a accessor function that returns the partition
- * names for any given value in the table.
+ * An index definition maps a value to one or more partition names. Each name
+ * represents a child table in the recursive table tree. Returning `null` or
+ * `undefined` means the value does not belong to any partition.
  *
  * @example
- * ```typescript
- * // One partition for every unique task status
- * (task) => task.status;
+ * ```ts
+ * // One partition per task status
+ * task => task.status
+ *
+ * // Multiple partitions for a value
+ * todo => [
+ *   todo.isImportant ? "important" : "regular",
+ *   todo.listId
+ * ];
  * ```
  */
 export type IIndexDefinition<V> = (
@@ -17,39 +24,53 @@ export type IIndexDefinition<V> = (
 ) => string | string[] | readonly string[] | null | undefined;
 
 /**
- * Interface for a table that supports indexing contained values.
+ * A table that supports partitioning its values into derived tables
+ * based on an index definition.
+ *
+ * Indexing creates a tree of derived tables. Each partition is itself
+ * an `IReadonlyTable`, and can be further indexed or sorted recursively.
  */
 export interface IIndexableTable<K, V> {
     /**
-     * Index values in the table based on the given definition.
+     * Set or update the index definition for this table.
      *
-     * @param definition A funtion that defines how to index values
-     * @param partitionInitializer Optional function that is called whenever a new partition is created, allowing to customize it (e.g., adding indexes or sorting)
+     * Partitioning is determined entirely by the definition; changing it
+     * rebuilds the partitions. The optional initializer is called whenever
+     * a new partition is created, allowing customization of each child table
+     * (e.g., adding further indexing or sorting).
+     *
+     * @param definition Function that assigns partition names to a value.
+     * @param partitionInitializer Optional callback invoked for every newly created partition. Returns true if this partition needs to be memoized
      */
     index(
         definition: IIndexDefinition<V>,
-        partitionInitializer?: (name: string, partition: IReadOnlyTable<K, V>) => void,
+        partitionInitializer?: (
+            name: string,
+            partition: Pick<IReadonlyTable<K, V>, "sort" | "index" | "memo">,
+        ) => void,
     ): void;
 
     /**
-     * Remove index from the table.
+     * Remove the current index definition and clear all partitions.
      *
-     * @param definition Must be null to remove existing index
+     * Passing `null` disables indexing for this table.
      */
     index(definition: null): void;
 
     /**
      * Access a partition by name.
-     * @param name The name of the partition
      *
-     * @returns The partition with the given name
+     * Returns a derived table for the given partition name. If the partition
+     * does not exist (empty or never created), an empty derived table is returned.
+     *
+     * @param name Name of the partition.
      */
-    partition(name: string): IReadOnlyTable<K, V>;
+    partition(name: string): IReadonlyTable<K, V>;
 
     /**
-     * Get all non-empty partition names in the table.
+     * Get the names of all non-empty partitions in this table.
      *
-     * @returns An array with all partition names
+     * @returns Array of partition names that currently contain values.
      */
-    partitions(): string[];
+    partitions(): readonly string[];
 }

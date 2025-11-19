@@ -7,10 +7,10 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Try it live](https://img.shields.io/badge/Try%20it-live-ff69b4)](https://codesandbox.io/p/sandbox/c9lv4v)
 
-Reactive, recurseively-indexable and sortable in-memory keyed collections — all in **~1 KB**.  
+Reactive, recursively-indexable, sortable and memoizable maps — all in **~1 KB**.  
 Written in TypeScript with full type definitions. Side-effects free.
 
-> **The correct way to memoize sorted & filtered collections.**
+> **The correct way to memoize sorted & filtered keyed collections.**
 >
 > Most web apps don’t need collection memoization. The DOM is almost always the real bottleneck for performance.  
 > That said, when you are processing huge amounts of data (e.g. a realtime dashboard or a fully-offline app), `memotable` gives you the _correct_ memoizable primitive.
@@ -48,24 +48,36 @@ It provides:
 Simple indexing and sorting in a React component
 
 ```tsx
-const taskTable = new Table<string, Task>(); // Structure defined once
-taskTable.index((task) => task.listId); // ✅ Index enabled fast per list reads
-taskTable.sort((task1, task2) => task1.title.localeCompare(task2.title)); // ✅ Comparator applied and maintained incrementally
+const taskTable = new Table<string, Task>();
 
-// ✅ Simpler React component that just renders the data in a table
+function setupTable() {
+    // ✅ Comparator applied and maintained incrementally
+    taskTable.sort((task1, task2) => task1.title.localeCompare(task2.title));
+
+    // ✅ Index + memo enables fast per list reads
+    taskTable.index(
+        (task) => task.listId,
+        (_, list) => list.memo(),
+    );
+}
+
+// ✅ Generic React component that renders a table of tasks
 function TaskList({ taskTable }) {
-    useTable(taskTable); // ✅ Subscription that is only notified when the table gets updated
+    useTable(taskTable); // ✅ Subscription that is only notified when table gets updated
     return (
         <div>
-            {taskTable.values().map((t) => (
+            {taskTable.toArray().map((t) => (
                 <Task key={t.id} {...t} />
             ))}
         </div>
     );
 }
+
+// Render a list
+<TaskList taskTable={taskTable.partition("list1")} />;
 ```
 
-Nested index, conditional sorting
+Complex nested index, sorting and conditional memoization
 
 ```ts
 type Location = {
@@ -77,21 +89,10 @@ type Location = {
     population: number;
 };
 
-// Comparator for sorting by population
-const sortByPopulation = (_, partition) => {
-    partition.sort((a, b) => b.population - a.population);
-};
-
-// Comparator for sorting by name
-const sortByDistrictName = (_, partition) => {
-    partition.sort((a, b) => b.district.localCompare(a.district));
-};
-
-// Define multi-level hierarchical partitioning
+// Define complex multi-level hierarchical partitioning
 table.index(
     () => ["nested", "byCountry", "byCity"], // 3 top level partitions
     (name, partition) => {
-        // Conditional partition initialization
         switch (name) {
             case "nested":
                 partition.index(
@@ -103,19 +104,40 @@ table.index(
                             (l) => l.region,
                             (_, region) => {
                                 // Nested level 3: Within each region, index by city
-                                region.index((l) => l.city, sortByPopulation);
+                                region.index(
+                                    (l) => l.city,
+                                    (_, city) => {
+                                        // Sort each city partition by population
+                                        city.sort((a, b) => b.population - a.population);
+                                    },
+                                );
                             },
                         );
                     },
                 );
                 break;
             case "byCountry":
-                // Custom population comparator for this partition
-                partition.index((l) => l.country, sortByPopulation);
+                partition.index(
+                    (l) => l.country,
+                    (countryName, country) => {
+                        // Sort each country partition by population
+                        country.sort((a, b) => b.population - a.population);
+
+                        // IMPORTANT: Memoize only (large + frequently read) partitions
+                        if (countryName === "India" || countryName === "USA") {
+                            country.memo();
+                        }
+                    },
+                );
                 break;
             case "byCity":
-                // Custom district name compratator for this partition
-                partition.index((l) => l.city, sortByDistrictName);
+                partition.index(
+                    (l) => l.city,
+                    (_, city) => {
+                        // Sort each city partition by name
+                        city.sort((a, b) => a.city.localeCompare(b.city));
+                    },
+                );
                 break;
         }
     },
@@ -175,16 +197,16 @@ It's **not** a full state management system like MobX or Zustand. Instead, it's 
 
 Memotable is optimized for **read-heavy workloads**. The tradeoff: slower writes, faster reads.
 
-### Real-world benchmark: 50,000 tasks across 50 lists with R/W ratio of 5
+### Real-world benchmark
 
-Scenario: 50,000 tasks with list-based indexing, importance filtering, and two-factor sorting (importance + timestamp). Simulates a typical task management app with 500 reads and 100 writes.
+Scenario: 50 lists with 1000 tasks per list with list-based indexing, importance filtering, and two-factor sorting (importance + timestamp). Simulates a typical task management app with 400 reads and 100 writes.
 
-| Operation    | memotable  | Plain JS    | Difference      |
-| ------------ | ---------- | ----------- | --------------- |
-| Initial load | 59.4ms     | 4.5ms       |                 |
-| 100 edits    | 30.5ms     | 0.1ms       |                 |
-| 500 reads    | 0.1ms      | 367.1ms     |                 |
-| **Total**    | **90.1ms** | **371.7ms** | **4.1x faster** |
+| Operation    | vanilla     | memotable  | Difference      |
+| ------------ | ----------- | ---------- | --------------- |
+| Initial load | 3.0ms       | 35.0ms     |                 |
+| 200 edits    | 0.0ms       | 30.3ms     |                 |
+| 800 reads    | 244.7ms     | 3.7ms      |                 |
+| **Total**    | **247.8ms** | **68.9ms** | **3.6x faster** |
 
 _Run `pnpm benchmark` to test on your machine._
 
