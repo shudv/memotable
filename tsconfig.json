@@ -34,6 +34,6 @@
         // Vitest
         "types": ["vitest/globals"]
     },
-    "include": ["src/**/*"],
+    "include": ["src/**/*", "tests/**/*", "**/*.d.ts"],
     "exclude": ["node_modules", "dist"]
 }

@@ -31,5 +31,7 @@ export default defineConfig({
 
         // Test file patterns
         include: ["src/**/*.{test,spec}.{ts,tsx}"],
+
+        setupFiles: "./vitest.setup.ts",
     },
 });

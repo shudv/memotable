@@ -1,42 +1,53 @@
-import { IReadOnlyTable } from "./IReadOnlyTable";
-
-// Define a type that includes only the mutation methods of ITable that can be batched
-export type TBatch<K, V> = Pick<ITable<K, V>, "set" | "delete" | "touch">;
+import { IReadonlyTable } from "./IReadonlyTable";
 
 /**
- * Interface for a table that also supports mutation operations on top of existing features.
- * @template K Type of the keys
- * @template V Type of the values in the table
+ * A restricted view of a table that is safe to use inside a batch.
+ *
+ * During a batch, only data mutations (`set`, `delete`, `touch`) may be
+ * performed. Structural changes — such as defining new derived tables or
+ * changing sorting/indexing rules — are not allowed and must be configured
+ * before the batch begins.
+ *
+ * This type prevents accidental structural edits during batch execution.
  */
-export interface ITable<K, V> extends IReadOnlyTable<K, V> {
-    /**
-     * Set a value in the table
-     * @param key Item key
-     * @param value Item value
-     */
-    set(key: K, value: V): void;
+export type TBatchable<K, V> = Exclude<ITable<K, V>, "sort" | "index">;
 
+/**
+ * A mutable table supporting incremental updates, recursive derived views,
+ * and map-like operations.
+ *
+ * @template K Type of the keys
+ * @template V Type of the stored values
+ */
+export interface ITable<K, V> extends IReadonlyTable<K, V>, Map<K, V> {
     /**
-     * Delete a value from the table
-     * @param key Item key
+     * Marks a value as changed without replacing it.
      *
-     * @returns True if the key was deleted, false if the key was not found
-     */
-    delete(key: K): boolean;
-
-    /**
-     * Touch a value in the table
+     * Use this when a value is mutated in place, or when external factors
+     * require the table to re-evaluate indexing or sorting for this key.
      *
-     * This is needed when a value is either mutated in place or when external
-     * factors affect the derived structures (indexes or order).
-     *
-     * @param key Item key
+     * @param key Key of the item being refreshed.
      */
     touch(key: K): void;
 
     /**
-     * Run a batch of operations on the table
-     * @param fn Function that receives the table as an argument and performs multiple edit operations on it
+     * Executes multiple mutations as a single grouped update.
+     *
+     * Inside a batch, you may perform data edits (`set`, `delete`, `touch`),
+     * but you must not alter the table's structure (e.g., by defining new
+     * derived tables or changing sorting rules). Structural configuration
+     * must be done before the batch starts.
+     *
+     * The batch function receives a restricted table type that enforces this.
+     *
+     * @param fn Function that performs multiple data-level edits on the table.
      */
-    batch(fn: (t: TBatch<K, V>) => void): void;
+    batch(fn: (t: TBatchable<K, V>) => void): void;
+
+    /**
+     * Executes a provided function once for each key/value pair in the table.
+     * @param callbackfn Function to execute for each element.
+     * @param thisArg Value to use as `this` when executing `callbackfn`.
+     */
+    forEach<T>(callbackfn: (value: V, key: K, table: ITable<K, V>) => void, thisArg?: T): void;
 }

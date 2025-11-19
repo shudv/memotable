@@ -1,16 +1,18 @@
 // Contracts
-import { ITable, TBatch } from "./contracts/ITable";
+import { ITable, TBatchable } from "./contracts/ITable";
 import { IComparator } from "./contracts/ISortableTable";
-import { IDelta } from "./contracts/IObservableTable";
 import { IIndexDefinition } from "./contracts/IIndexableTable";
-import { IReadOnlyTable } from "./contracts/IReadOnlyTable";
+import { IReadonlyTable } from "./contracts/IReadonlyTable";
+import { ITableSubscriber } from "./contracts/IObservableTable";
 
 /**
  * Table implementation that supports basic CRUD, batching, indexing and sorting.
  * @template T Type of the values in the table
  */
 export class Table<K, V> implements ITable<K, V> {
-    // #region BASIC OPERATIONS
+    [Symbol.toStringTag]: string = "Table";
+
+    // #region READS
 
     // A map to hold the actual values in the table
     private _map: Map<K, V> = new Map();
@@ -19,39 +21,131 @@ export class Table<K, V> implements ITable<K, V> {
         return this._map.get(key);
     }
 
-    public keys(): K[] {
-        // Return the memoized sorted keys if available, otherwise sort at read time
-        return this._sortedKeys ? this._sortedKeys : this._sortKeys(this._comparator);
+    public has(key: K): boolean {
+        return this._map.has(key);
     }
 
-    public values(): V[] {
-        // Return the memoized sorted values if available, otherwise sort at read time
-        return this._sortedValues
-            ? this._sortedValues
-            : this.keys().map((key) => this._map.get(key)!);
-    }
-
-    public size(): number {
+    public get size() {
         return this._map.size;
     }
 
-    public set(key: K, value: V): void {
-        this._map.set(key, value);
+    public keys(): MapIterator<K> {
+        // Return the memoized keys if available
+        if (this._sortedKeys) {
+            return this._sortedKeys[Symbol.iterator]();
+        }
+
+        // Otherwise, if comparator is available sort at read time, else return native iterator
+        const { _comparator } = this;
+        const keyIterator = this._map.keys();
+        return _comparator
+            ? Array.from(keyIterator).sort(this._keyComparator(_comparator))[Symbol.iterator]()
+            : keyIterator;
+    }
+
+    public values(): MapIterator<V> {
+        // Return the memoized values if available
+        if (this._sortedValues) {
+            return this._sortedValues[Symbol.iterator]();
+        }
+
+        // Otherwise, if comparator is available sort at read time, else return native iterator
+        const { _comparator } = this;
+        const valueIterator = this._map.values();
+        return _comparator
+            ? Array.from(valueIterator).sort(_comparator)[Symbol.iterator]()
+            : valueIterator;
+    }
+
+    public entries(): MapIterator<[K, V]> {
+        const keyIterator = this.keys(); // already sorted (memoized or fresh)
+        const map = this._map;
+
+        return {
+            [Symbol.iterator]() {
+                return this;
+            },
+            next(): IteratorResult<[K, V]> {
+                const { value: key, done } = keyIterator.next();
+                if (done) {
+                    return { done: true, value: undefined };
+                }
+                return { done: false, value: [key, map.get(key)!] };
+            },
+        };
+    }
+
+    public toArray(): readonly V[] {
+        const { _comparator } = this;
+        if (this._sortedValues) {
+            return this._sortedValues;
+        }
+
+        const valuesArray = Array.from(this._map.values());
+        return _comparator ? valuesArray.sort(_comparator) : valuesArray;
+    }
+
+    public [Symbol.iterator](): MapIterator<[K, V]> {
+        return this.entries();
+    }
+
+    public forEach<T>(callbackfn: (value: V, key: K, map: this) => void, thisArg?: T) {
+        // Iterate in the same order as keys(), sorted or insertion order
+        for (const [key, value] of this) {
+            callbackfn.call(thisArg, value, key, this);
+        }
+    }
+
+    public touch(key: K): void {
         this._propagateChanges([key]);
     }
 
+    // #endregion
+
+    // #region MEMOIZATION
+    private _shouldMemoize: boolean = false;
+
+    public memo(flag?: boolean): void {
+        this._shouldMemoize = flag ?? true;
+
+        // Step 1: Propagate memoization to all partitions
+        for (const partition of Object.values(this._partitions)) {
+            partition.memo(this._shouldMemoize);
+        }
+
+        // Step 2: Refresh memoization for the current table
+        this._refreshMemoization();
+    }
+
+    public isMemoized(): boolean {
+        return this._shouldMemoize;
+    }
+
+    // #endregion
+
+    // #region WRITES
+
+    public set(key: K, value: V): this {
+        this._map.set(key, value);
+        this._propagateChanges([key]);
+        return this;
+    }
+
     public delete(key: K): boolean {
-        if (!this._map.has(key)) {
+        if (!this._map.delete(key)) {
             return false;
         }
 
-        this._map.delete(key);
         this._propagateChanges([key]);
         return true;
     }
 
-    public touch(key: K) {
-        this._propagateChanges([key]);
+    public clear(): void {
+        const allKeys = Array.from(this._map.keys());
+        this._map.clear();
+        this.index(null);
+        this.sort(null);
+        this._notifyListeners(allKeys);
     }
 
     // #endregion
@@ -62,7 +156,7 @@ export class Table<K, V> implements ITable<K, V> {
     private _isBatchOperationInProgress = false;
     private _keysUpdatedInCurrentBatch = new Set<K>();
 
-    public batch(fn: (t: TBatch<K, V>) => void): void {
+    public batch(fn: (t: TBatchable<K, V>) => void): void {
         // Step 1: Run the batch of operations and mark start and end to disable change propagation on every set/delete
         this._isBatchOperationInProgress = true;
         fn(this);
@@ -70,7 +164,7 @@ export class Table<K, V> implements ITable<K, V> {
 
         // Step 2: After the batch is complete, propagate all accumulated changes
         if (this._keysUpdatedInCurrentBatch.size > 0) {
-            this._propagateChanges(Array.from(this._keysUpdatedInCurrentBatch));
+            this._propagateChanges(this._keysUpdatedInCurrentBatch);
             this._keysUpdatedInCurrentBatch.clear();
         }
     }
@@ -79,12 +173,12 @@ export class Table<K, V> implements ITable<K, V> {
 
     // #region SUBSCRIPTIONS
 
-    // Set of listeners subscribed to changes in the table
-    private _listeners: Set<(delta: IDelta<K>) => void> = new Set();
+    // Set of subscribers subscribed to changes in the table
+    private _subscribers: Set<ITableSubscriber<K>> = new Set();
 
-    public subscribe = (listener: (delta: IDelta<K>) => void): (() => void) => {
-        this._listeners.add(listener);
-        return () => this._listeners.delete(listener);
+    public subscribe = (subscriber: ITableSubscriber<K>): (() => void) => {
+        this._subscribers.add(subscriber);
+        return () => this._subscribers.delete(subscriber);
     };
 
     // #endregion
@@ -105,12 +199,12 @@ export class Table<K, V> implements ITable<K, V> {
         }
 
         // Step 2: Unmemoize the current order because comparator has changed
-        this._unmemoize();
+        this._sortedKeys = this._sortedValues = null;
 
         // Step 3: Refresh memoization based on the new comparator
         this._refreshMemoization();
 
-        // Step 4: Notify listeners about the change in order
+        // Step 4: Notify subscribers about the change in order
         if (comparator) {
             this._notifyListeners([]);
         }
@@ -124,7 +218,7 @@ export class Table<K, V> implements ITable<K, V> {
     private _indexAccessor: ((value: V | undefined) => readonly string[]) | null = null;
 
     /** Optional partition initializer function */
-    private _partitionInitializer?: (name: string, partition: IReadOnlyTable<K, V>) => void;
+    private _partitionInitializer?: (name: string, partition: IReadonlyTable<K, V>) => void;
 
     /** Map of keys to their current partition names (used for diffing against new updates) */
     private _partitionNames: Map<K, readonly string[]> = new Map();
@@ -134,17 +228,17 @@ export class Table<K, V> implements ITable<K, V> {
 
     public index(
         definition: IIndexDefinition<V>,
-        partitionInitializer?: (name: string, partition: IReadOnlyTable<K, V>) => void,
+        partitionInitializer?: (name: string, partition: IReadonlyTable<K, V>) => void,
     ): void;
     public index(definition: null): void;
     public index(
         definition: IIndexDefinition<V> | null,
-        partitionInitializer?: (name: string, partition: IReadOnlyTable<K, V>) => void,
+        partitionInitializer?: (name: string, partition: IReadonlyTable<K, V>) => void,
     ): void {
         if (definition == null) {
             this._indexAccessor = null;
             this._partitions = {};
-            this._partitionNames = new Map();
+            this._partitionNames.clear();
             this._partitionInitializer = undefined;
             return;
         }
@@ -169,19 +263,14 @@ export class Table<K, V> implements ITable<K, V> {
 
         // Build index membership for all existing values
         this._applyIndexUpdate(this.keys(), false /* values themselves are not updated */);
-
-        // Refresh memoization status because index status affects memoization
-        this._refreshMemoization();
     }
 
-    public partition(name: string): IReadOnlyTable<K, V> {
+    public partition(name: string): IReadonlyTable<K, V> {
         return this._getPartition(name);
     }
 
     public partitions(): string[] {
-        return Object.keys(this._partitions).filter(
-            (name) => this._getPartition(name).keys().length > 0,
-        );
+        return Object.keys(this._partitions).filter((name) => this._getPartition(name).size > 0);
     }
 
     // #endregion
@@ -196,6 +285,9 @@ export class Table<K, V> implements ITable<K, V> {
             // Step 2: Propagate parent sorting to the partition
             table.sort(this._comparator);
 
+            // Step 2: Propagate memoization status to the partition
+            table.memo(this._shouldMemoize);
+
             // Step 3: Initialize the partition if an initializer is provided
             this._partitionInitializer?.(name, table);
 
@@ -207,7 +299,7 @@ export class Table<K, V> implements ITable<K, V> {
      * Propagate changes to indexes, views and notify subscribers.
      * @param updatedKeys Array of keys that have been updated
      */
-    private _propagateChanges(updatedKeys: K[]) {
+    private _propagateChanges(updatedKeys: Iterable<K>): void {
         if (this._isBatchOperationInProgress) {
             // If a batch operation is in progress, we record the updated key for later processing
             for (const key of updatedKeys) {
@@ -231,7 +323,7 @@ export class Table<K, V> implements ITable<K, V> {
      * @param updatedKeys Array of keys for which index membership needs to be recalculated
      * @param valuesUpdated Flag indicating whether the values themselves were updated (true) or just refreshed (false)
      */
-    private _applyIndexUpdate(updatedKeys: K[], valuesUpdated: boolean = true) {
+    private _applyIndexUpdate(updatedKeys: Iterable<K>, valuesUpdated: boolean = true) {
         // Step 1: Calculate update batches for all partitions for given key's
         // E.g. { "P1": Map { "key1" => value1, "key2" => null } } represents that key1 should be added/updated and key2 should be removed from partition "P1"
         const batches: Record<string, Map<K, V | null>> = {};
@@ -287,7 +379,7 @@ export class Table<K, V> implements ITable<K, V> {
             });
 
             // Cleanup empty partitions
-            if (partition.size() === 0) {
+            if (partition.size === 0) {
                 delete this._partitions[name];
             }
         }
@@ -298,12 +390,12 @@ export class Table<K, V> implements ITable<K, V> {
      *
      * @param updatedKeys Array of keys which have been updated
      */
-    private _applyViewUpdate(updatedKeys: K[]) {
+    private _applyViewUpdate(updatedKeysIterator: Iterable<K>) {
         const { _sortedKeys, _comparator } = this;
         if (!_sortedKeys || !_comparator) return; // No view to update
 
         // Step 1: Calculate updated keys that should be included in the view
-        updatedKeys = updatedKeys.filter((key) => this._map.has(key));
+        const updatedKeys = Array.from(updatedKeysIterator).filter((key) => this._map.has(key));
         if (updatedKeys.length > 1) {
             updatedKeys.sort(this._keyComparator(_comparator));
         }
@@ -324,7 +416,7 @@ export class Table<K, V> implements ITable<K, V> {
         while (i < unchangedKeys.length || j < updatedKeys.length) {
             // Pick one key from current view and one from updatedKeys array
             const unchangedId = i < unchangedKeys.length ? unchangedKeys[i] : null;
-            const newId = j < updatedKeys.length ? updatedKeys[j] : null;
+            const newId = j < updatedKeys.length ? updatedKeys[j] : updatedKeys[j + 1];
 
             // Add the key from the existing view if newIds array is empty or it comes before the key from the newIds array
             if (
@@ -343,12 +435,12 @@ export class Table<K, V> implements ITable<K, V> {
     }
 
     /**
-     * Notify all subscribed listeners about the delta of modified keys.
+     * Notify all subscribed subscribers about the delta of modified keys.
      * @param delta The list of modified value keys
      */
-    private _notifyListeners(delta: IDelta<K>) {
-        for (const listener of this._listeners) {
-            listener(delta);
+    private _notifyListeners(modifiedKeys: Iterable<K>) {
+        for (const listener of this._subscribers) {
+            listener(Array.from(modifiedKeys));
         }
     }
 
@@ -356,36 +448,25 @@ export class Table<K, V> implements ITable<K, V> {
      * Refresh the memoization status of the table based on current sorting and indexing.
      */
     private _refreshMemoization(): void {
-        const { _sortedKeys, _comparator, _indexAccessor } = this;
+        const { _sortedKeys, _comparator } = this;
 
-        // Table should be memoized when an on order is defined and no partitions exist
-        const shouldMemoize = _comparator !== null && _indexAccessor === null;
+        // Table should be memoized when a comparator is set and memoization is enabled
+        const memoize = _comparator !== null && this._shouldMemoize;
 
         // Case 1: Memoize order if a comparator is set and no partitions
-        if (_sortedKeys === null && shouldMemoize) {
-            this._memoize();
+        if (_sortedKeys === null && memoize) {
+            this._sortedKeys = Array.from(this.keys());
+
+            this._sortedValues = _allocateEmptyArray<V>(this._sortedKeys.length);
+            for (const key of this._sortedKeys) {
+                this._sortedValues!.push(this._map.get(key)!);
+            }
         }
 
         // Case 2: Clear memoized order if partitions exist
-        if (_sortedKeys !== null && !shouldMemoize) {
-            this._unmemoize();
+        if (_sortedKeys !== null && !memoize) {
+            this._sortedKeys = this._sortedValues = null;
         }
-    }
-
-    /** Helper to unmemoize the current view */
-    private _unmemoize(): void {
-        this._sortedKeys = this._sortedValues = null;
-    }
-
-    private _memoize(): void {
-        this._sortedKeys = this._sortKeys(this._comparator);
-        this._sortedValues = this.values();
-    }
-
-    /* Helper to sort the keys based on the given comparator */
-    private _sortKeys(comparator: IComparator<V> | null): K[] {
-        const keys = Array.from(this._map.keys());
-        return comparator ? keys.sort(this._keyComparator(comparator)) : keys;
     }
 
     /* Helper to create a key comparator from a value comparator */
