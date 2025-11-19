@@ -10,7 +10,7 @@
 Reactive, recursively-indexable, sortable and memoizable maps — all in **~1 KB**.  
 Written in TypeScript with full type definitions. Side-effects free.
 
-> **The correct way to memoize sorted & filtered keyed collections.**
+> **The correct way to memoize sorted & filtered keyed-collections.**
 >
 > Most web apps don’t need collection memoization. The DOM is almost always the real bottleneck for performance.  
 > That said, when you are processing huge amounts of data (e.g. a realtime dashboard or a fully-offline app), `memotable` gives you the _correct_ memoizable primitive.
@@ -39,9 +39,9 @@ That’s what `memotable` is.
 
 It provides:
 
-- **Recursive indexing** — Index collection as deeply as needed.
+- **Indexing** — Index collections as deeply as needed.
 - **Sorting** — Sort at the root or any child node - applies recursively from any node to it's children.
-- **Fine-grained subscriptions** — Subscribe only to the specific partition you are interested in, ignoring other changes.
+- **Subscriptions** — Subscribe only to the specific partition you are interested in, ignoring other changes.
 
 ## Using memotable
 
@@ -63,7 +63,7 @@ function setupTable() {
 
 // ✅ Generic React component that renders a table of tasks
 function TaskList({ taskTable }) {
-    useTable(taskTable); // ✅ Subscription that is only notified when table gets updated
+    useTable(taskTable); // ✅ Subscription that is only notified when this table gets updated
     return (
         <div>
             {taskTable.toArray().map((t) => (
@@ -73,8 +73,12 @@ function TaskList({ taskTable }) {
     );
 }
 
-// Render a list
+// Render lists
 <TaskList taskTable={taskTable.partition("list1")} />;
+<TaskList taskTable={taskTable.partition("list1")} />;
+
+// Update task table
+taskTable.set("1", { listId: "list1", title: "Task" }); // only re-renders "list1" node
 ```
 
 Complex nested index, sorting and conditional memoization
@@ -88,6 +92,8 @@ type Location = {
     district: string;
     population: number;
 };
+
+table = new Table<Location>();
 
 // Define complex multi-level hierarchical partitioning
 table.index(
@@ -178,7 +184,7 @@ You _don't_ need it for simple apps.
 
 ✅ Use it when:
 
-- Your data set is large enough that filtering/sorting frequently can cause visible frame drops (~10ms+).
+- Your data set is large enough that filtering/sorting frequently can cause visible frame drops (~10ms+). (typically heavy realtime dashboards OR fully-offline apps)
 - Reads outnumber writes by at least 2-3x.
 
 ## When _not_ to use memotable
