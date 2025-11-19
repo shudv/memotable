@@ -1,5 +1,5 @@
 // Type for a table subscriber
-export type ITableSubscriber<K> = (modifiedKeys: Iterable<K>) => void;
+export type ITableSubscriber<K> = (modifiedKeys: readonly K[]) => void;
 
 /**
  * Provides a way to observe changes in a table.

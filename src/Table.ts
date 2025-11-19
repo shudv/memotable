@@ -76,7 +76,13 @@ export class Table<K, V> implements ITable<K, V> {
     }
 
     public toArray(): readonly V[] {
-        return Array.from(this.values());
+        const { _comparator } = this;
+        if (this._sortedValues) {
+            return this._sortedValues;
+        }
+
+        const valuesArray = Array.from(this._map.values());
+        return _comparator ? valuesArray.sort(_comparator) : valuesArray;
     }
 
     public [Symbol.iterator](): MapIterator<[K, V]> {
@@ -156,7 +162,7 @@ export class Table<K, V> implements ITable<K, V> {
 
         // Step 2: After the batch is complete, propagate all accumulated changes
         if (this._keysUpdatedInCurrentBatch.size > 0) {
-            this._propagateChanges(Array.from(this._keysUpdatedInCurrentBatch));
+            this._propagateChanges(this._keysUpdatedInCurrentBatch);
             this._keysUpdatedInCurrentBatch.clear();
         }
     }
@@ -432,7 +438,7 @@ export class Table<K, V> implements ITable<K, V> {
      */
     private _notifyListeners(modifiedKeys: Iterable<K>) {
         for (const listener of this._subscribers) {
-            listener(modifiedKeys);
+            listener(Array.from(modifiedKeys));
         }
     }
 
@@ -448,7 +454,11 @@ export class Table<K, V> implements ITable<K, V> {
         // Case 1: Memoize order if a comparator is set and no partitions
         if (_sortedKeys === null && memoize) {
             this._sortedKeys = Array.from(this.keys());
-            this._sortedValues = Array.from(this.values());
+
+            this._sortedValues = _allocateEmptyArray<V>(this._sortedKeys.length);
+            for (const key of this._sortedKeys) {
+                this._sortedValues!.push(this._map.get(key)!);
+            }
         }
 
         // Case 2: Clear memoized order if partitions exist
