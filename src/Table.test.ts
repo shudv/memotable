@@ -154,11 +154,24 @@ describe("Table", () => {
             const callback = vi.fn();
             table.subscribe(callback);
 
-            table.set("1", { title: "Task One" });
-            expect(callback).toHaveBeenCalledWith(["1"]);
+            table.batch((t) => {
+                t.set("1", { title: "Task One" });
+                t.set("2", { title: "Task Two" });
+            });
+            expect(callback).toHaveBeenCalledWith(["1", "2"]);
+            callback.mockClear();
 
-            table.set("2", { title: "Task Two" });
+            table.delete("1");
+            expect(callback).toHaveBeenCalledWith(["1"]);
+            callback.mockClear();
+
+            table.delete("1"); // No-op delete
+            expect(callback).not.toHaveBeenCalledWith(["1"]);
+            callback.mockClear();
+
+            table.clear();
             expect(callback).toHaveBeenCalledWith(["2"]);
+            callback.mockClear();
         });
 
         test("unsubscription - should stop notifications after unsubscribe", () => {

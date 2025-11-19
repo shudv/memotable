@@ -141,9 +141,11 @@ export class Table<K, V> implements ITable<K, V> {
     }
 
     public clear(): void {
+        const allKeys = Array.from(this._map.keys());
         this._map.clear();
         this.index(null);
         this.sort(null);
+        this._notifyListeners(allKeys);
     }
 
     // #endregion
