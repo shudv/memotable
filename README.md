@@ -13,7 +13,7 @@ Written in TypeScript with full type definitions. Side-effects free.
 > **The correct way to memoize sorted & filtered collections.**
 >
 > Most web apps don’t need collection memoization. The DOM is almost always the real bottleneck for performance.  
-> That said, when you are processing huge amounts of data (e.g. a realtime dashboard), `memotable` gives you the _correct_ memoizable primitive.
+> That said, when you are processing huge amounts of data (e.g. a realtime dashboard or a fully-offline app), `memotable` gives you the _correct_ memoizable primitive.
 
 ## Why memotable?
 
