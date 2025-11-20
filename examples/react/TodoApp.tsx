@@ -1,33 +1,24 @@
-import React from "react";
+import React, { useState } from "react";
 import { Table } from "../../src/Table";
 import { useTable } from "../../src/integrations/react";
 import { IReadonlyTable } from "../../src/contracts/IReadonlyTable";
 import { styles } from "./styles";
 import { ITodo } from "./ITodo";
 
+// #region BUSINESS LOGIC
+
 // Config data
 const ImportantPartition = "Important";
-const VisiblePartition = "Visible";
-const RenderedLists = ["List 1", "List 2"];
 
-// Setup todo table
-const todoTable = new Table<string, ITodo>();
+// Global state
+const AppState = {
+    todoTable: new Table<string, ITodo>(),
+    keyword: "",
+};
 
 // Register partition index
-todoTable.index(
-    (todo) => {
-        const partitions: string[] = [];
-
-        // Every important todo goes into "Important" partition
-        if (todo.isImportant) {
-            partitions.push(ImportantPartition);
-        }
-
-        // Every todo goes into its list partition
-        partitions.push(todo.listId);
-
-        return partitions;
-    },
+AppState.todoTable.index(
+    (todo) => [todo.listId, todo.isImportant ? ImportantPartition : null],
     (_, partition) => {
         // All partition should be ordered based on 2-factor sorting
         partition.sort((a, b) => {
@@ -39,33 +30,47 @@ todoTable.index(
                 return a.createdDate.getTime() - b.createdDate.getTime();
             }
         });
+
+        // Apply keyword filtering within each partition
+        partition.index(
+            (todo) => todo.title.toLowerCase().includes(AppState.keyword.toLowerCase()),
+
+            // Memoize the filtered partitions for better performance
+            (_, partition) => partition.memo(),
+        );
     },
 );
 
-const RenderedPartitions = [...RenderedLists, ImportantPartition];
+// Utility to add a random todo
+function addRandomTodo() {
+    const id = `todo-${Date.now()}-${Math.random()}`;
+    AppState.todoTable.set(id, {
+        id,
+        title: `Task ${AppState.todoTable.size + 1}`,
+        listId: "List " + Math.floor(1 + Math.random() * 5),
+        isImportant: Math.random() < 0.3,
+        createdDate: new Date(),
+        dueDate: new Date(new Date().getTime() + Math.random() * 14 * 24 * 60 * 60 * 1000),
+    });
+}
 
-// Utility to apply keyword filter to all rendered partitions
-function applyFilter(keyword: string) {
-    for (const key of RenderedPartitions) {
-        todoTable.partition(key).index(
-            (todo) =>
-                todo.title.toLowerCase().includes(keyword.toLowerCase())
-                    ? VisiblePartition
-                    : undefined,
-            (_, partition) => {
-                // Memoize the visible partitions for performance
-                partition.memo();
-            },
-        );
+// Utility to apply keyword filter
+function applyKeywordFilter(keyword: string) {
+    AppState.keyword = keyword;
+    for (const partitionKey of AppState.todoTable.partitions()) {
+        AppState.todoTable.partition(partitionKey).index();
     }
 }
 
-applyFilter(""); // Apply once to innitialze visible partitions
+// #endregion
+
+// #region PRESENTATIONAL REACT COMPONENTS
 
 // Generic ListView component
 function ListView({ title, table }: { title: string; table: IReadonlyTable<string, ITodo> }) {
     useTable(table);
 
+    // Each render just renders the todos in the table without applying filter/sort during render pass
     return (
         <div style={styles.listView}>
             <h3 style={styles.listViewTitle}>{title}</h3>
@@ -88,28 +93,10 @@ function ListView({ title, table }: { title: string; table: IReadonlyTable<strin
 
 // Full todo app
 export function TodoApp() {
-    const [keyword, setKeyword] = React.useState("");
+    const { todoTable } = AppState;
 
-    const addTodo = (listId: string, isImportant: boolean = false) => {
-        const id = `todo-${Date.now()}-${Math.random()}`;
-        const now = new Date();
-        const dueDate = new Date(now.getTime() + Math.random() * 14 * 24 * 60 * 60 * 1000);
-
-        todoTable.set(id, {
-            id,
-            title: `Task ${todoTable.size + 1}`,
-            listId,
-            isImportant,
-            createdDate: now,
-            dueDate,
-        });
-    };
-
-    const handleKeywordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const value = e.target.value;
-        setKeyword(value);
-        applyFilter(value);
-    };
+    useTable(todoTable);
+    const [keyword, setKeyword] = useState(AppState.keyword);
 
     return (
         <div style={styles.container}>
@@ -120,35 +107,34 @@ export function TodoApp() {
                     type="text"
                     placeholder="Filter by keyword..."
                     value={keyword}
-                    onChange={handleKeywordChange}
+                    onChange={(e) => {
+                        const keyword = e.target.value;
+                        setKeyword(keyword);
+                        applyKeywordFilter(keyword);
+                    }}
                     style={styles.filterInput}
                 />
             </div>
 
             <div style={styles.buttonContainer}>
-                <button onClick={() => addTodo("List 1", false)} style={styles.button}>
-                    Add to List 1
-                </button>
-                <button onClick={() => addTodo("List 2", false)} style={styles.button}>
-                    Add to List 2
-                </button>
-                <button onClick={() => addTodo("List 1", true)} style={styles.button}>
-                    Add Important to List 1
-                </button>
-                <button onClick={() => addTodo("List 2", true)} style={styles.button}>
-                    Add Important to List 2
+                <button onClick={addRandomTodo} style={styles.button}>
+                    Add random task
                 </button>
             </div>
 
             <div style={styles.gridContainer}>
-                {RenderedPartitions.map((partitionKey) => (
-                    <ListView
-                        key={partitionKey}
-                        title={partitionKey}
-                        table={todoTable.partition(partitionKey).partition(VisiblePartition)}
-                    />
+                {todoTable.partitions().map((partitionKey) => (
+                    <>
+                        <ListView
+                            key={partitionKey}
+                            title={partitionKey}
+                            table={todoTable.partition(partitionKey).partition()}
+                        />
+                    </>
                 ))}
             </div>
         </div>
     );
 }
+
+// #endregion

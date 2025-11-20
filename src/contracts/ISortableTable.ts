@@ -24,4 +24,12 @@ export interface ISortableTable<V> {
      * @param comparator Comparison function, or `null` to disable sorting.
      */
     sort(comparator: IComparator<V> | null): void;
+
+    /**
+     * Re-apply the existing comparator to re-sort the table.
+     *
+     * This is useful if the properties of the values have changed that
+     * affect their ordering according to the current comparator.
+     */
+    sort(): void;
 }
