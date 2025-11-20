@@ -476,5 +476,5 @@ describe("Table - Performance Benchmarks", () => {
         }
 
         console.log("\n" + "=".repeat(TABLE_WIDTH) + "\n");
-    });
+    }, 20000); // Extended timeout for benchmarks
 });
