@@ -270,13 +270,16 @@ Creates a new table with key type `K` and value type `V`.
 
 - `index(definition: (value: V) => string | string[] | null, partitionInitializer?: (name: string, partition: IReadonlyTable<K, V>) => void): void` - Create partitions based on a definition
 - `index(null): void` - Remove indexing
+- `index(): void` - Re-index based on existing definition (no-op if no definition provided before)
 - `partition(name: string): IReadonlyTable<K, V>` - Get a specific partition
-- `partitions(): string[]` - Get all non-empty partition names
+- `partition(): IReadonlyTable<K, V>` - Get the default partition
+- `partitions(): string[]` - Get all partition names (includes empty partitions)
 
 #### Sorting
 
 - `sort(comparator: (a: V, b: V) => number): void` - Set a comparator function
 - `sort(null): void` - Remove sorting
+- `sort(): void` - Re-sort based on existing comparator (no-op if no comparator applied before)
 
 #### Memoization
 
