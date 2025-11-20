@@ -344,7 +344,7 @@ export class Table<K, V> implements ITable<K, V> {
                 batches[name] ??= new Map<K, V | null>();
 
                 /**
-                 * If the key is marked for deletion in this partition (implies it already existd in that partition) and
+                 * If the key is marked for deletion in this partition (implies it already existed in that partition) and
                  * the value itself was not updated, we can simply remove it from the batch as no change is needed.
                  * This optimization avoids unnecessary touch operations on partitions when only re-indexing is needed.
                  *
@@ -408,15 +408,16 @@ export class Table<K, V> implements ITable<K, V> {
         );
 
         // Step 3: Merge the unchanged keys and updated keys back into the sorted arrays
-        this._sortedKeys = _allocateEmptyArray<K>(_sortedKeys.length);
-        this._sortedValues = _allocateEmptyArray<V>(_sortedKeys.length);
+        const finalSize = unchangedKeys.length + updatedKeys.length;
+        this._sortedKeys = _allocateEmptyArray<K>(finalSize);
+        this._sortedValues = _allocateEmptyArray<V>(finalSize);
 
         let i = 0; // Iterator for current view array
         let j = 0; // Iterator for updatedKeys array
         while (i < unchangedKeys.length || j < updatedKeys.length) {
             // Pick one key from current view and one from updatedKeys array
             const unchangedId = i < unchangedKeys.length ? unchangedKeys[i] : null;
-            const newId = j < updatedKeys.length ? updatedKeys[j] : updatedKeys[j + 1];
+            const newId = j < updatedKeys.length ? updatedKeys[j] : null;
 
             // Add the key from the existing view if newIds array is empty or it comes before the key from the newIds array
             if (
@@ -487,7 +488,7 @@ export class Table<K, V> implements ITable<K, V> {
  * dynamically resizing the array in cases where the final size estimate is known.
  */
 function _allocateEmptyArray<T>(size: number): T[] {
-    const array: T[] = new Array(size > 1 ? size : 1);
+    const array: T[] = new Array(size);
     array.length = 0; // Ensure the array is empty
     return array;
 }
