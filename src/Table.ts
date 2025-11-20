@@ -344,7 +344,7 @@ export class Table<K, V> implements ITable<K, V> {
                 batches[name] ??= new Map<K, V | null>();
 
                 /**
-                 * If the key is marked for deletion in this partition (implies it already existd in that partition) and
+                 * If the key is marked for deletion in this partition (implies it already existed in that partition) and
                  * the value itself was not updated, we can simply remove it from the batch as no change is needed.
                  * This optimization avoids unnecessary touch operations on partitions when only re-indexing is needed.
                  *

@@ -40,7 +40,7 @@ That’s what `memotable` is.
 It provides:
 
 - **Indexing** — Index collections as deeply as needed.
-- **Sorting** — Sort at the root or any child node - applies recursively from any node to it's children.
+- **Sorting** — Sort at the root or any child node - applies recursively from any node to its children.
 - **Subscriptions** — Subscribe only to the specific partition you are interested in, ignoring other changes.
 
 ## Using memotable
