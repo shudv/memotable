@@ -75,7 +75,7 @@ function TaskList({ taskTable }) {
 
 // Render lists
 <TaskList taskTable={taskTable.partition("list1")} />;
-<TaskList taskTable={taskTable.partition("list1")} />;
+<TaskList taskTable={taskTable.partition("list2")} />;
 
 // Update task table
 taskTable.set("1", { listId: "list1", title: "Task" }); // only re-renders "list1" node
@@ -93,7 +93,7 @@ type Location = {
     population: number;
 };
 
-table = new Table<Location>();
+table = new Table<string, Location>();
 
 // Define complex multi-level hierarchical partitioning
 table.index(
