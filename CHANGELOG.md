@@ -1,5 +1,11 @@
 # memotable
 
+## 3.0.1
+
+### Patch Changes
+
+- 2016963: Misc. bug fixes
+
 ## 3.0.0
 
 ### Major Changes

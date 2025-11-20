@@ -1,6 +1,6 @@
 {
     "name": "memotable",
-    "version": "3.0.0",
+    "version": "3.0.1",
     "description": "A tiny JavaScript data structure for maintaining derived collections (indexed and sorted) with correct incremental updates.",
     "type": "module",
     "sideEffects": false,
