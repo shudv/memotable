@@ -5,6 +5,9 @@ import { IIndexDefinition } from "./contracts/IIndexableTable";
 import { IReadonlyTable } from "./contracts/IReadonlyTable";
 import { ITableSubscriber } from "./contracts/IObservableTable";
 
+// Default partition name for unnamed partitions
+const __DEFAULT_PARTITION__ = "_";
+
 /**
  * Table implementation that supports basic CRUD, batching, indexing and sorting.
  * @template T Type of the values in the table
@@ -109,7 +112,7 @@ export class Table<K, V> implements ITable<K, V> {
         this._shouldMemoize = flag ?? true;
 
         // Step 1: Propagate memoization to all partitions
-        for (const partition of Object.values(this._partitions)) {
+        for (const partition of this._partitions.values()) {
             partition.memo(this._shouldMemoize);
         }
 
@@ -195,11 +198,18 @@ export class Table<K, V> implements ITable<K, V> {
     private _sortedValues: V[] | null = null;
     private _comparator: IComparator<V> | null = null;
 
-    public sort(comparator: IComparator<V> | null) {
+    public sort(comparator: IComparator<V> | null): void;
+    public sort(): void;
+    public sort(comparator?: IComparator<V> | null) {
+        // If comparator is not provided, re-apply the existing comparator
+        if (comparator === undefined) {
+            comparator = this._comparator;
+        }
+
         this._comparator = comparator;
 
         // Step 1: Apply sorting to all partitions
-        for (const partition of Object.values(this._partitions)) {
+        for (const partition of this._partitions.values()) {
             partition.sort(comparator);
         }
 
@@ -227,20 +237,28 @@ export class Table<K, V> implements ITable<K, V> {
     private _partitionNames: Map<K, readonly string[]> = new Map();
 
     /** All partitions created by this index */
-    private _partitions: Record<string, ITable<K, V>> = {};
+    private _partitions: Map<string, ITable<K, V>> = new Map();
 
     public index(
         definition: IIndexDefinition<V>,
         partitionInitializer?: (name: string, partition: IReadonlyTable<K, V>) => void,
     ): void;
     public index(definition: null): void;
+    public index(): void;
     public index(
-        definition: IIndexDefinition<V> | null,
+        definition?: IIndexDefinition<V> | null,
         partitionInitializer?: (name: string, partition: IReadonlyTable<K, V>) => void,
     ): void {
+        // Re-index using existing definition if no new definition is provided
+        if (definition === undefined && this._indexAccessor) {
+            // Build index membership for all existing values
+            this._applyIndexUpdate(this.keys(), false /* values themselves are not updated */);
+            return;
+        }
+
         if (definition == null) {
             this._indexAccessor = null;
-            this._partitions = {};
+            this._partitions.clear();
             this._partitionNames.clear();
             this._partitionInitializer = undefined;
             return;
@@ -253,12 +271,16 @@ export class Table<K, V> implements ITable<K, V> {
             }
 
             const keyOrKeys = definition(value);
-            if (keyOrKeys == null /** or undefined */) {
+            if (!keyOrKeys) {
                 return [] as readonly string[];
             }
 
+            if (keyOrKeys === true) {
+                return [__DEFAULT_PARTITION__];
+            }
+
             return Array.isArray(keyOrKeys)
-                ? (keyOrKeys as readonly string[])
+                ? (keyOrKeys.filter(Boolean) as readonly string[])
                 : ([keyOrKeys] as readonly string[]);
         };
 
@@ -268,12 +290,12 @@ export class Table<K, V> implements ITable<K, V> {
         this._applyIndexUpdate(this.keys(), false /* values themselves are not updated */);
     }
 
-    public partition(name: string): IReadonlyTable<K, V> {
-        return this._getPartition(name);
+    public partition(name?: string): IReadonlyTable<K, V> {
+        return this._getPartition(name ?? __DEFAULT_PARTITION__);
     }
 
-    public partitions(): string[] {
-        return Object.keys(this._partitions).filter((name) => this._getPartition(name).size > 0);
+    public partitions(): readonly string[] {
+        return Array.from(this._partitions.keys());
     }
 
     // #endregion
@@ -281,7 +303,7 @@ export class Table<K, V> implements ITable<K, V> {
     // #region PRIVATE HELPERS
 
     private _getPartition(name: string): ITable<K, V> {
-        return (this._partitions[name] ??= (() => {
+        if (!this._partitions.has(name)) {
             // Step 1: Create a new partition table
             const table = new Table<K, V>();
 
@@ -294,8 +316,11 @@ export class Table<K, V> implements ITable<K, V> {
             // Step 3: Initialize the partition if an initializer is provided
             this._partitionInitializer?.(name, table);
 
-            return table;
-        })());
+            // Step 4: Store and return the partition
+            this._partitions.set(name, table);
+        }
+
+        return this._partitions.get(name)!;
     }
 
     /**

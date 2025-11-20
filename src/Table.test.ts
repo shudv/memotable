@@ -273,6 +273,18 @@ describe("Table", () => {
     });
 
     describe("Indexing", () => {
+        test("default partition", () => {
+            const table = new Table<string, ITaggedValue>();
+
+            table.index((value) => !value.tags.includes("IGNORE"));
+
+            table.set("1", { tags: ["A", "B"] });
+            table.set("2", { tags: ["IGNORE", "C"] });
+            table.set("3", { tags: ["D"] });
+
+            expect(table.partition().keys()).toYield(["1", "3"]);
+        });
+
         test("should create partitions based on index definition", () => {
             const table = new Table<string, ITaggedValue>();
             table.set("1", { tags: ["A", "B"] });
@@ -287,7 +299,28 @@ describe("Table", () => {
             expect(table.partition("D").keys()).toYield(["3"]);
         });
 
-        test("partitions() - should return all non-empty partition names", () => {
+        test("should ignore partition names with falsy values", () => {
+            const table = new Table<string, ITaggedValue>();
+            table.set("1", { tags: ["A"] });
+
+            table.index((_) => "");
+            expect(table.partitions().length).toEqual(0);
+
+            table.index((_) => false);
+            expect(table.partitions().length).toEqual(0);
+
+            table.index((_) => null);
+            expect(table.partitions().length).toEqual(0);
+
+            table.index((_) => []);
+            expect(table.partitions().length).toEqual(0);
+
+            table.index((_) => ["VALID", "", null]);
+            expect(table.partitions().length).toEqual(1);
+            expect(table.partition("VALID").size).toEqual(1);
+        });
+
+        test("partitions() - should return all partition names", () => {
             const table = new Table<string, ITaggedValue>();
             table.set("1", { tags: ["A", "B"] });
             table.set("2", { tags: ["B", "C"] });
@@ -298,11 +331,7 @@ describe("Table", () => {
             // Eagerly access a partition to create it
             table.partition("E").sort(() => 0);
 
-            const partitions = table.partitions().sort();
-            expect(partitions).toEqual(["A", "B", "C", "D"]); // Should not include empty "E" partition
-
-            table.set("4", { tags: ["E"] });
-            expect(table.partitions().sort()).toEqual(["A", "B", "C", "D", "E"]);
+            expect(table.partitions()).toEqual(["A", "B", "C", "D", "E"]); // Should include empty "E" partition
         });
 
         test("should update partitions correctly when values are added, updated or removed", () => {
@@ -591,6 +620,34 @@ describe("Table", () => {
             // Print the full tree structure
             print(table, (location) => `${location.district} (${location.population})`, "🌍 World");
         });
+
+        test("re-indexing", () => {
+            const table = new Table<string, ITaggedValue>();
+            table.set("1", { tags: ["A", "B"] });
+            table.set("2", { tags: ["B", "C"] });
+
+            const indexConfig = {
+                ignoredTag: "A",
+            };
+
+            table.index((value) => !value.tags.some((tag) => tag === indexConfig.ignoredTag));
+
+            expect(table.partition().keys()).toYield(["2"]);
+
+            // Change index configuration
+            indexConfig.ignoredTag = "C";
+
+            table.index(); // Re-index
+
+            expect(table.partition().keys()).toYield(["1"]);
+        });
+
+        test("re-index is no-op if index definition is not provided", () => {
+            const table = new Table<string, ITaggedValue>();
+            table.set("1", { tags: ["A"] });
+            table.index();
+            expect(table.partitions().length).toBe(0);
+        });
     });
 
     describe("Sorting", () => {
@@ -753,6 +810,40 @@ describe("Table", () => {
                 expect(person.age).toBeLessThanOrEqual(previousAge);
                 previousAge = person.age;
             }
+        });
+
+        test("re-sorting", () => {
+            const table = new Table<string, IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+            table.set("3", { name: "Charlie", age: 35 });
+
+            const sortConfig = {
+                ascending: true,
+            };
+
+            table.sort((a, b) => (sortConfig.ascending ? a.age - b.age : b.age - a.age));
+
+            expect(table.keys()).toYieldOrdered(["2", "1", "3"]);
+
+            // Change sort configuration
+            sortConfig.ascending = false;
+
+            table.sort(); // Re-sort
+
+            expect(table.keys()).toYieldOrdered(["3", "1", "2"]);
+        });
+
+        test("re-sorting is no-op if comparator is not provided", () => {
+            const table = new Table<string, IPerson>();
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+
+            const before = Array.from(table.keys());
+            table.sort();
+            const after = Array.from(table.keys());
+
+            expect(after).toEqual(before);
         });
     });
 

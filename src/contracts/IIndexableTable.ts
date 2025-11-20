@@ -21,7 +21,13 @@ import { IReadonlyTable } from "./IReadonlyTable";
  */
 export type IIndexDefinition<V> = (
     value: V,
-) => string | string[] | readonly string[] | null | undefined;
+) =>
+    | string
+    | null
+    | undefined
+    | boolean
+    | (string | null | undefined)[]
+    | readonly (string | null | undefined)[];
 
 /**
  * A table that supports partitioning its values into derived tables
@@ -58,19 +64,22 @@ export interface IIndexableTable<K, V> {
     index(definition: null): void;
 
     /**
+     * Re-index the table using the existing index definition.
+     */
+    index(): void;
+
+    /**
      * Access a partition by name.
      *
      * Returns a derived table for the given partition name. If the partition
      * does not exist (empty or never created), an empty derived table is returned.
      *
-     * @param name Name of the partition.
+     * @param name Name of the partition (uses default unnamed partition if not provided).
      */
-    partition(name: string): IReadonlyTable<K, V>;
+    partition(name?: string): IReadonlyTable<K, V>;
 
     /**
-     * Get the names of all non-empty partitions in this table.
-     *
-     * @returns Array of partition names that currently contain values.
+     * Get the names of all (potentially empty) partitions in this table.
      */
     partitions(): readonly string[];
 }
