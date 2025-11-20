@@ -39,6 +39,14 @@ TodoTable.index(
     },
 );
 
+// Utility to apply keyword filter
+function applyKeywordFilter(keyword: string) {
+    ConfigTable.set(KEYWORD_CONFIG_ID, keyword);
+    for (const [_, partition] of TodoTable.partitions()) {
+        partition.index();
+    }
+}
+
 // Utility to add a random todos
 function addRandomTodo(count: number) {
     TodoTable.batch((t) => {
@@ -54,14 +62,6 @@ function addRandomTodo(count: number) {
             });
         }
     });
-}
-
-// Utility to apply keyword filter
-function applyKeywordFilter(keyword: string) {
-    ConfigTable.set(KEYWORD_CONFIG_ID, keyword);
-    for (const [_, partition] of TodoTable.partitions()) {
-        partition.index();
-    }
 }
 
 // #endregion

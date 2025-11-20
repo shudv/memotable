@@ -310,6 +310,6 @@ MIT
 
 **Next steps:**
 
-- 📖 [Read the full example](./examples/react/TodoApp.tsx)
+- 📖 [Read the full example](./examples/react/TodoAppMemotable.tsx)
 - 🚀 [Try it live](https://codesandbox.io/p/sandbox/c9lv4v)
 - 💬 [Open an issue](https://github.com/shudv/memotable/issues) or contribute on GitHub
