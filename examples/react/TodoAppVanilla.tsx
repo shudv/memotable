@@ -29,15 +29,6 @@ function getTodos(filter: (todo: ITodo) => boolean): ITodo[] {
         });
 }
 
-// Utility to get all list IDs
-function getLists(): string[] {
-    const listSet = new Set<string>();
-    for (const todo of todos.values()) {
-        listSet.add(todo.listId);
-    }
-    return Array.from(listSet).sort();
-}
-
 // Utility to add a random todos
 function addRandomTodo(count: number) {
     for (let i = 0; i < count; i++) {
@@ -115,9 +106,11 @@ export function TodoApp() {
             </div>
 
             <div style={styles.gridContainer}>
-                {getLists().map((id) => (
-                    <ListView key={id} title={id} todos={getTodos((todo) => todo.listId == id)} />
-                ))}
+                {Array.from(new Set(Array.from(todos.values()).map((todo) => todo.listId))).map(
+                    (l) => (
+                        <ListView key={l} title={l} todos={getTodos((todo) => todo.listId == l)} />
+                    ),
+                )}
                 <ListView key={IMP} title={IMP} todos={getTodos((todo) => todo.isImportant)} />
             </div>
         </div>
