@@ -1,4 +1,3 @@
-import React, { useState } from "react";
 import { Table } from "../../src/Table";
 import { useTable } from "../../src/integrations/react";
 import { IReadonlyTable } from "../../src/contracts/IReadonlyTable";
@@ -6,19 +5,15 @@ import { styles } from "./styles";
 import { ITodo } from "./ITodo";
 
 // #region BUSINESS LOGIC
+const KEYWORD_CONFIG_ID = "filter-keyword";
 
-// Config data
-const ImportantPartition = "Important";
-
-// Global state
-const AppState = {
-    todoTable: new Table<string, ITodo>(),
-    keyword: "",
-};
+// Global app state
+const TodoTable = new Table<string, ITodo>(); // Table containing all todos
+const ConfigTable = new Table<string, string>(); // Configuration table (contains filter keyword)
 
 // Register partition index
-AppState.todoTable.index(
-    (todo) => [todo.listId, todo.isImportant ? ImportantPartition : null],
+TodoTable.index(
+    (todo) => [todo.listId, todo.isImportant ? "Important" : null],
     (_, partition) => {
         // All partition should be ordered based on 2-factor sorting
         partition.sort((a, b) => {
@@ -33,7 +28,10 @@ AppState.todoTable.index(
 
         // Apply keyword filtering within each partition
         partition.index(
-            (todo) => todo.title.toLowerCase().includes(AppState.keyword.toLowerCase()),
+            (todo) =>
+                todo.title
+                    .toLowerCase()
+                    .includes((ConfigTable.get(KEYWORD_CONFIG_ID) ?? "").toLowerCase()),
 
             // Memoize the filtered partitions for better performance
             (_, partition) => partition.memo(),
@@ -41,24 +39,28 @@ AppState.todoTable.index(
     },
 );
 
-// Utility to add a random todo
-function addRandomTodo() {
-    const id = `todo-${Date.now()}-${Math.random()}`;
-    AppState.todoTable.set(id, {
-        id,
-        title: `Task ${AppState.todoTable.size + 1}`,
-        listId: "List " + Math.floor(1 + Math.random() * 5),
-        isImportant: Math.random() < 0.3,
-        createdDate: new Date(),
-        dueDate: new Date(new Date().getTime() + Math.random() * 14 * 24 * 60 * 60 * 1000),
+// Utility to add a random todos
+function addRandomTodo(count: number) {
+    TodoTable.batch((t) => {
+        for (let i = 0; i < count; i++) {
+            const id = `todo-${Date.now()}-${Math.random()}`;
+            t.set(id, {
+                id,
+                title: `Task ${TodoTable.size + 1}`,
+                listId: "List " + Math.floor(1 + Math.random() * 5),
+                isImportant: Math.random() < 0.3,
+                createdDate: new Date(),
+                dueDate: new Date(new Date().getTime() + Math.random() * 14 * 24 * 60 * 60 * 1000),
+            });
+        }
     });
 }
 
 // Utility to apply keyword filter
 function applyKeywordFilter(keyword: string) {
-    AppState.keyword = keyword;
-    for (const partitionKey of AppState.todoTable.partitions()) {
-        AppState.todoTable.partition(partitionKey).index();
+    ConfigTable.set(KEYWORD_CONFIG_ID, keyword);
+    for (const [_, partition] of TodoTable.partitions()) {
+        partition.index();
     }
 }
 
@@ -93,10 +95,8 @@ function ListView({ title, table }: { title: string; table: IReadonlyTable<strin
 
 // Full todo app
 export function TodoApp() {
-    const { todoTable } = AppState;
-
-    useTable(todoTable);
-    const [keyword, setKeyword] = useState(AppState.keyword);
+    useTable(ConfigTable);
+    useTable(TodoTable);
 
     return (
         <div style={styles.container}>
@@ -106,31 +106,21 @@ export function TodoApp() {
                 <input
                     type="text"
                     placeholder="Filter by keyword..."
-                    value={keyword}
-                    onChange={(e) => {
-                        const keyword = e.target.value;
-                        setKeyword(keyword);
-                        applyKeywordFilter(keyword);
-                    }}
+                    value={ConfigTable.get(KEYWORD_CONFIG_ID)}
+                    onChange={(e) => applyKeywordFilter(e.target.value)}
                     style={styles.filterInput}
                 />
             </div>
 
             <div style={styles.buttonContainer}>
-                <button onClick={addRandomTodo} style={styles.button}>
-                    Add random task
+                <button onClick={() => addRandomTodo(100)} style={styles.button}>
+                    Add 100 random tasks
                 </button>
             </div>
 
             <div style={styles.gridContainer}>
-                {todoTable.partitions().map((partitionKey) => (
-                    <>
-                        <ListView
-                            key={partitionKey}
-                            title={partitionKey}
-                            table={todoTable.partition(partitionKey).partition()}
-                        />
-                    </>
+                {TodoTable.partitions().map(([listId, list]) => (
+                    <ListView key={listId} title={listId} table={list.partition()} />
                 ))}
             </div>
         </div>

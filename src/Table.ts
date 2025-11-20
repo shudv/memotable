@@ -6,7 +6,7 @@ import { IReadonlyTable } from "./contracts/IReadonlyTable";
 import { ITableSubscriber } from "./contracts/IObservableTable";
 
 // Default partition name for unnamed partitions
-const __DEFAULT_PARTITION__ = "_";
+const __DEFAULT_PARTITION__ = "__DEFAULT__";
 
 /**
  * Table implementation that supports basic CRUD, batching, indexing and sorting.
@@ -294,8 +294,8 @@ export class Table<K, V> implements ITable<K, V> {
         return this._getPartition(name ?? __DEFAULT_PARTITION__);
     }
 
-    public partitions(): readonly string[] {
-        return Array.from(this._partitions.keys());
+    public partitions(): [string, IReadonlyTable<K, V>][] {
+        return Array.from(this._partitions.entries());
     }
 
     // #endregion

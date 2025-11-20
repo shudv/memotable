@@ -45,7 +45,7 @@ function printTable<K, V>(
     } else {
         // Recurse into partitions
         for (let i = 0; i < partitions.length; i++) {
-            const partitionTitle = partitions[i]!;
+            const partitionTitle = partitions[i]![0];
             const partition = table.partition(partitionTitle);
             const isLastPartition = i === partitions.length - 1;
             printTable(partition, toString, partitionTitle, childIndent, isLastPartition);
