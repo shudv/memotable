@@ -235,6 +235,70 @@ function MyComponent({ table }) {
 
 _Coming soon_
 
+## API Reference
+
+### Table
+
+The main `Table` class provides all the functionality for managing indexed, sorted, and memoized collections.
+
+#### Constructor
+
+```ts
+new Table<K, V>();
+```
+
+Creates a new table with key type `K` and value type `V`.
+
+#### Basic Operations
+
+- `set(key: K, value: V): this` - Add or update a value
+- `get(key: K): V | undefined` - Get a value by key
+- `has(key: K): boolean` - Check if a key exists
+- `delete(key: K): boolean` - Remove a value by key
+- `clear(): void` - Remove all values and reset indexing/sorting
+- `size: number` - Get the number of values in the table
+
+#### Iteration
+
+- `keys(): MapIterator<K>` - Iterate over keys (respects sorting if enabled)
+- `values(): MapIterator<V>` - Iterate over values (respects sorting if enabled)
+- `entries(): MapIterator<[K, V]>` - Iterate over key-value pairs
+- `toArray(): readonly V[]` - Get all values as an array
+- `forEach<T>(callbackfn, thisArg?): void` - Execute a function for each entry
+
+#### Indexing
+
+- `index(definition: (value: V) => string | string[] | null, partitionInitializer?: (name: string, partition: IReadonlyTable<K, V>) => void): void` - Create partitions based on a definition
+- `index(null): void` - Remove indexing
+- `partition(name: string): IReadonlyTable<K, V>` - Get a specific partition
+- `partitions(): string[]` - Get all non-empty partition names
+
+#### Sorting
+
+- `sort(comparator: (a: V, b: V) => number): void` - Set a comparator function
+- `sort(null): void` - Remove sorting
+
+#### Memoization
+
+- `memo(flag?: boolean): void` - Enable or disable memoization (default: true)
+- `isMemoized(): boolean` - Check if memoization is enabled
+
+#### Subscriptions
+
+- `subscribe(subscriber: (keys: K[]) => void): () => void` - Subscribe to changes. Returns an unsubscribe function.
+
+#### Batching
+
+- `batch(fn: (t: TBatchable<K, V>) => void): void` - Group multiple operations into a single update
+
+#### Advanced
+
+- `touch(key: K): void` - Mark a value as changed without replacing it (useful when the value is mutated in place)
+
+### React Integration
+
+- `useTable(table: IReadonlyTable<K, V>): void` - React hook that subscribes to table changes and triggers re-renders
+
 ## License
 
 MIT
