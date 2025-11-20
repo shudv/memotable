@@ -13,9 +13,20 @@ const ConfigTable = new Table<string, string>(); // Configuration table (contain
 
 // Register partition index
 TodoTable.index(
-    (todo) => [todo.listId, todo.isImportant ? "Important" : null],
+    (todo) => [todo.listId, todo.isImportant ? "Important" : null], // Specify which all partitions a todo belongs to
     (_, partition) => {
-        // All partition should be ordered based on 2-factor sorting
+        // Every parition is further filtered by keyword from config table
+        partition.index(
+            (todo) =>
+                todo.title
+                    .toLowerCase()
+                    .includes((ConfigTable.get(KEYWORD_CONFIG_ID) ?? "").toLowerCase()),
+
+            // Memoize the filtered partitions for better read performance
+            (_, partition) => partition.memo(),
+        );
+
+        // Sort todos within each partition using 2-factor sorting: important first, then by created date
         partition.sort((a, b) => {
             if (a.isImportant && !b.isImportant) {
                 return -1;
@@ -25,19 +36,16 @@ TodoTable.index(
                 return a.createdDate.getTime() - b.createdDate.getTime();
             }
         });
-
-        // Apply keyword filtering within each partition
-        partition.index(
-            (todo) =>
-                todo.title
-                    .toLowerCase()
-                    .includes((ConfigTable.get(KEYWORD_CONFIG_ID) ?? "").toLowerCase()),
-
-            // Memoize the filtered partitions for better performance
-            (_, partition) => partition.memo(),
-        );
     },
 );
+
+// Utility to apply keyword filter
+function applyKeywordFilter(keyword: string) {
+    ConfigTable.set(KEYWORD_CONFIG_ID, keyword);
+    for (const [_, partition] of TodoTable.partitions()) {
+        partition.index();
+    }
+}
 
 // Utility to add a random todos
 function addRandomTodo(count: number) {
@@ -54,14 +62,6 @@ function addRandomTodo(count: number) {
             });
         }
     });
-}
-
-// Utility to apply keyword filter
-function applyKeywordFilter(keyword: string) {
-    ConfigTable.set(KEYWORD_CONFIG_ID, keyword);
-    for (const [_, partition] of TodoTable.partitions()) {
-        partition.index();
-    }
 }
 
 // #endregion
