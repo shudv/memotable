@@ -43,6 +43,8 @@ It provides:
 - **Sorting** — Sort at the root or any child node - applies recursively from any node to its children.
 - **Subscriptions** — Subscribe only to the specific partition you are interested in, ignoring other changes.
 
+💡 You can think of memotable as a utility that lets you **shape your data** into a **render-ready** form, and then keeps that shape up to date automatically and efficiently as edits come in.
+
 ## Using memotable
 
 Simple indexing and sorting in a React component

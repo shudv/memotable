@@ -79,7 +79,7 @@ export interface IIndexableTable<K, V> {
     partition(name?: string): IReadonlyTable<K, V>;
 
     /**
-     * Get the names of all (potentially empty) partitions in this table.
+     * Get all (potentially empty) partitions in this table.
      */
-    partitions(): readonly string[];
+    partitions(): [string, IReadonlyTable<K, V>][];
 }

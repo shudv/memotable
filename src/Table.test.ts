@@ -331,7 +331,7 @@ describe("Table", () => {
             // Eagerly access a partition to create it
             table.partition("E").sort(() => 0);
 
-            expect(table.partitions()).toEqual(["A", "B", "C", "D", "E"]); // Should include empty "E" partition
+            expect(table.partitions().map(([key]) => key)).toEqual(["A", "B", "C", "D", "E"]); // Should include empty "E" partition
         });
 
         test("should update partitions correctly when values are added, updated or removed", () => {
