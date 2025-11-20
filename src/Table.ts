@@ -141,10 +141,15 @@ export class Table<K, V> implements ITable<K, V> {
     }
 
     public clear(): void {
-        const allKeys = Array.from(this._map.keys());
-        this._map.clear();
+        // Step 1: Clear indexes and sorting
         this.index(null);
         this.sort(null);
+
+        // Step 2: Capture keys and clear the main map
+        const allKeys = Array.from(this._map.keys());
+        this._map.clear();
+
+        // Step 3: Notify listeners about all cleared keys
         this._notifyListeners(allKeys);
     }
 
@@ -204,10 +209,8 @@ export class Table<K, V> implements ITable<K, V> {
         // Step 3: Refresh memoization based on the new comparator
         this._refreshMemoization();
 
-        // Step 4: Notify subscribers about the change in order
-        if (comparator) {
-            this._notifyListeners([]);
-        }
+        // Step 4: Notify subscribers because we fallback to internal map enforced order
+        this._notifyListeners([]);
     }
 
     // #endregion
@@ -377,11 +380,6 @@ export class Table<K, V> implements ITable<K, V> {
                     }
                 }
             });
-
-            // Cleanup empty partitions
-            if (partition.size === 0) {
-                delete this._partitions[name];
-            }
         }
     }
 
@@ -422,7 +420,7 @@ export class Table<K, V> implements ITable<K, V> {
             // Add the key from the existing view if newIds array is empty or it comes before the key from the newIds array
             if (
                 unchangedId &&
-                (!newId || this._keyComparator(_comparator)(unchangedId, newId) <= 0)
+                (newId == null || this._keyComparator(_comparator)(unchangedId, newId) <= 0)
             ) {
                 this._sortedKeys.push(unchangedId);
                 this._sortedValues.push(this._map.get(unchangedId)!);
@@ -440,8 +438,11 @@ export class Table<K, V> implements ITable<K, V> {
      * @param delta The list of modified value keys
      */
     private _notifyListeners(modifiedKeys: Iterable<K>) {
-        for (const listener of this._subscribers) {
-            listener(Array.from(modifiedKeys));
+        if (this._subscribers.size > 0) {
+            const keys = Array.from(modifiedKeys);
+            for (const listener of this._subscribers) {
+                listener(keys);
+            }
         }
     }
 
@@ -454,8 +455,8 @@ export class Table<K, V> implements ITable<K, V> {
         // Table should be memoized when a comparator is set and memoization is enabled
         const memoize = _comparator !== null && this._shouldMemoize;
 
-        // Case 1: Memoize order if a comparator is set and no partitions
-        if (_sortedKeys === null && memoize) {
+        // Case 1: Memoize if not already memoized
+        if (memoize && _sortedKeys === null) {
             this._sortedKeys = Array.from(this.keys());
 
             this._sortedValues = _allocateEmptyArray<V>(this._sortedKeys.length);
@@ -464,8 +465,8 @@ export class Table<K, V> implements ITable<K, V> {
             }
         }
 
-        // Case 2: Clear memoized order if partitions exist
-        if (_sortedKeys !== null && !memoize) {
+        // Case 2: Clear memoized order if not needed
+        if (!memoize && _sortedKeys !== null) {
             this._sortedKeys = this._sortedValues = null;
         }
     }

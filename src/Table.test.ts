@@ -302,8 +302,7 @@ describe("Table", () => {
             expect(partitions).toEqual(["A", "B", "C", "D"]); // Should not include empty "E" partition
 
             table.set("4", { tags: ["E"] });
-            const updatedPartitions = table.partitions().sort();
-            expect(updatedPartitions).toEqual(["A", "B", "C", "D", "E"]);
+            expect(table.partitions().sort()).toEqual(["A", "B", "C", "D", "E"]);
         });
 
         test("should update partitions correctly when values are added, updated or removed", () => {
@@ -678,7 +677,7 @@ describe("Table", () => {
             expect(listener).toHaveBeenCalledWith([]);
         });
 
-        test("should not notify listeners when sort is cleared (because it's unnecessary)", () => {
+        test("should notify listeners when sort is cleared", () => {
             const table = new Table<string, IPerson>();
             table.set("1", { name: "Alice", age: 30 });
             table.set("2", { name: "Bob", age: 25 });
@@ -688,7 +687,7 @@ describe("Table", () => {
             table.subscribe(listener);
 
             table.sort(null);
-            expect(listener).not.toHaveBeenCalled();
+            expect(listener).toHaveBeenCalled();
         });
 
         test("should apply sort order to partitions recursively and eagerly", () => {
@@ -711,6 +710,49 @@ describe("Table", () => {
             expect(table.keys()).toYieldOrdered(["3", "1", "2", "4"]);
             expect(table.partition("Under30").keys()).toYieldOrdered(["2", "4"]);
             expect(table.partition("Over30").keys()).toYieldOrdered(["3", "1"]);
+        });
+
+        test("Large data set for sorting correctness (numeric keys and memoization)", () => {
+            const table = new Table<number, IPerson>();
+
+            const totalEntries = 10000;
+
+            // Insert entries with random ages
+            table.batch((t) => {
+                for (let i = 0; i < totalEntries; i++) {
+                    const age = Math.floor(Math.random() * 100);
+                    t.set(i, { name: `Person${i}`, age });
+                }
+            });
+
+            table.memo();
+
+            // Sort by age ascending and memoize
+            table.sort((a, b) => a.age - b.age);
+
+            // Update some entries with new random ages
+            table.batch((t) => {
+                for (let i = 0; i < totalEntries; i += 10) {
+                    const age = Math.floor(Math.random() * 100);
+                    t.set(i, { name: `Person${i}`, age });
+                }
+            });
+
+            // Validate sort order
+            let previousAge = -1;
+            for (const person of table.values()) {
+                expect(person.age).toBeGreaterThanOrEqual(previousAge);
+                previousAge = person.age;
+            }
+
+            // Now sort by age descending
+            table.sort((a, b) => b.age - a.age);
+
+            previousAge = 101;
+            for (const person of table.values()) {
+                expect(person.age).toBeLessThanOrEqual(previousAge);
+                previousAge = person.age;
+            }
         });
     });
 

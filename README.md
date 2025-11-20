@@ -10,7 +10,7 @@
 Reactive, recursively-indexable, sortable and memoizable maps — all in **~1 KB**.  
 Written in TypeScript with full type definitions. Side-effects free.
 
-> **The correct way to memoize sorted & filtered keyed-collections.**
+> **The correct way to memoize indexed and ordered keyed-collections.**
 >
 > Most web apps don’t need collection memoization. The DOM is almost always the real bottleneck for performance.  
 > That said, when you are processing huge amounts of data (e.g. a realtime dashboard or a fully-offline app), `memotable` gives you the _correct_ memoizable primitive.
@@ -293,7 +293,7 @@ Creates a new table with key type `K` and value type `V`.
 
 #### Advanced
 
-- `touch(key: K): void` - Mark a value as changed without replacing it (useful when the value is mutated in place)
+- `touch(key: K): void` - Mark a value as changed without replacing it (useful when the value is mutated in place OR indexing/sorting logic changes in a way that affects a key)
 
 ### React Integration
 
