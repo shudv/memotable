@@ -1,5 +1,11 @@
 # memotable
 
+## 3.1.1
+
+### Patch Changes
+
+- ef13428: Tweak partitions() API to make integration easier
+
 ## 3.1.0
 
 ### Minor Changes
