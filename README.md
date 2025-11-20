@@ -52,16 +52,14 @@ Simple indexing and sorting in a React component
 ```tsx
 const taskTable = new Table<string, Task>();
 
-function setupTable() {
-    // ✅ Comparator applied and maintained incrementally
-    taskTable.sort((task1, task2) => task1.title.localeCompare(task2.title));
+// ✅ Comparator applied and maintained incrementally
+taskTable.sort((task1, task2) => task1.title.localeCompare(task2.title));
 
-    // ✅ Index + memo enables fast per list reads
-    taskTable.index(
-        (task) => task.listId,
-        (_, list) => list.memo(),
-    );
-}
+// ✅ Index + memo enables fast per list reads
+taskTable.index(
+    (task) => task.listId,
+    (_, list) => list.memo(),
+);
 
 // ✅ Generic React component that renders a table of tasks
 function TaskList({ taskTable }) {
@@ -151,6 +149,79 @@ table.index(
     },
 );
 ```
+
+Comparison with vanilla implementation-
+
+<table>
+<tr>
+<th style="text-align:center;">Vanilla</th>
+<th style="text-align:center;">Memotable</th>
+</tr>
+<tr>
+<td>
+
+<pre><code class="language-ts">
+// Filter defines which todo's to read
+function getTodos(filter: (todo: ITodo) => boolean): ITodo[] {
+    return Array.from(todos.values())
+        .filter(
+            (todo) =>
+                filter(todo) &&
+
+                // Apply additional keyword filter on top of given filter
+                todo.title
+                    .toLowerCase()
+                    .includes((config.get(KEYWORD_CONFIG_ID) ?? "").toLowerCase()),
+        )
+        // 2-factor sorting: important first, then by created date
+        .sort((a, b) => {
+            if (a.isImportant && !b.isImportant) {
+                return -1;
+            } else if (!a.isImportant && b.isImportant) {
+                return 1;
+            } else {
+                return a.createdDate.getTime() - b.createdDate.getTime();
+            }
+        });
+}
+</code></pre>
+
+</td>
+<td>
+
+<pre><code class="language-ts">
+// Register partition index
+TodoTable.index(
+    (todo) => [todo.listId, todo.isImportant ? "Important" : null], // Specify which all partitions a todo belongs to
+    (_, partition) => {
+        // Every parition is further filtered by keyword from config table
+        partition.index(
+            (todo) =>
+                todo.title
+                    .toLowerCase()
+                    .includes((ConfigTable.get(KEYWORD_CONFIG_ID) ?? "").toLowerCase()),
+
+            // Memoize the filtered partitions for better read performance
+            (_, partition) => partition.memo(),
+        );
+
+        // Sort todos within each partition using 2-factor sorting: important first, then by created date
+        partition.sort((a, b) => {
+            if (a.isImportant && !b.isImportant) {
+                return -1;
+            } else if (!a.isImportant && b.isImportant) {
+                return 1;
+            } else {
+                return a.createdDate.getTime() - b.createdDate.getTime();
+            }
+        });
+    },
+);
+</code></pre>
+
+</td>
+</tr>
+</table>
 
 **Benefits:**
 
@@ -313,3 +384,7 @@ MIT
 - 📖 [Read the full example](./examples/react/TodoAppMemotable.tsx)
 - 🚀 [Try it live](https://codesandbox.io/p/sandbox/c9lv4v)
 - 💬 [Open an issue](https://github.com/shudv/memotable/issues) or contribute on GitHub
+
+```
+
+```
