@@ -56,7 +56,7 @@ Sample todo app with filtering and sorting, setup using vanilla TS-
 
 ```ts
 // Simple array holding all todo's
-const todos: ITodop[] = [];
+const todos: ITodo[] = [];
 
 // Generic function to get todo's that match any filter criteria
 function getTodos(filter: (todo: ITodo) => boolean): ITodo[] {
@@ -78,7 +78,7 @@ Identical app setup using `memotable`-
 
 ```ts
 // Table of todos
-const todos = new Table();
+const todos = new Table<string, ITodo>();
 
 // Register partition index
 todos.index(
