@@ -9,7 +9,7 @@ type INode = { id: string; parent?: INode };
 describe("Table", () => {
     describe("Basic Operations", () => {
         test("set() and get()", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
             table.set("3", { title: "Task Three" });
@@ -20,7 +20,7 @@ describe("Table", () => {
         });
 
         test("delete() - should remove value", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
 
             table.set("1", { title: "Task One" });
             expect(table.delete("1")).toBe(true);
@@ -31,7 +31,7 @@ describe("Table", () => {
         });
 
         test("values() - should return all values", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
 
@@ -40,7 +40,7 @@ describe("Table", () => {
         });
 
         test("keys() - should return all keys", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
 
@@ -48,7 +48,7 @@ describe("Table", () => {
         });
 
         test("size - should return the number of items in the table", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
             expect(table.size).toBe(0);
 
             table.set("1", { title: "Task One" });
@@ -65,7 +65,7 @@ describe("Table", () => {
         });
 
         test("has() - should check for existence of a key", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
             expect(table.has("1")).toBe(false);
             table.set("1", { title: "Task One" });
             expect(table.has("1")).toBe(true);
@@ -73,7 +73,7 @@ describe("Table", () => {
         });
 
         test("entries() - should return all key/value pairs", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
 
@@ -84,7 +84,7 @@ describe("Table", () => {
         });
 
         test("default iterator - should iterate over key/value pairs", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
 
@@ -99,7 +99,7 @@ describe("Table", () => {
         });
 
         test("forEach() - should execute callback for each key/value pair", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
 
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
@@ -111,7 +111,7 @@ describe("Table", () => {
         });
 
         test("toArray() - should return values as an array", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
 
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
@@ -120,7 +120,7 @@ describe("Table", () => {
         });
 
         test("clear() - should remove all items and clear indexing and sorting", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
 
             table.set("1", { title: "Task One" });
             table.set("2", { title: "Task Two" });
@@ -149,7 +149,7 @@ describe("Table", () => {
 
     describe("Subscriptions", () => {
         test("subscribe() - should notify on changes", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
 
             const callback = vi.fn();
             table.subscribe(callback);
@@ -175,7 +175,7 @@ describe("Table", () => {
         });
 
         test("unsubscription - should stop notifications after unsubscribe", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
 
             const callback = vi.fn();
             const unsubscribe = table.subscribe(callback);
@@ -190,7 +190,7 @@ describe("Table", () => {
         });
 
         test("notification deltas should contain all modified keys", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
 
             const callback = vi.fn();
             table.subscribe(callback);
@@ -206,7 +206,7 @@ describe("Table", () => {
         });
 
         test("nested subscriptions", () => {
-            const table = new Table<string, ITaggedValue>();
+            const table = createTable<string, ITaggedValue>();
             table.index((value) => value.tags);
 
             const callback = vi.fn();
@@ -226,7 +226,7 @@ describe("Table", () => {
         });
 
         test("multiple subscribers with some unsubscribing", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
             const subscriber1 = vi.fn();
             const subscriber2 = vi.fn();
             const subscriber3 = vi.fn();
@@ -252,7 +252,7 @@ describe("Table", () => {
 
     describe("Memoization", () => {
         test("should memoize partitions which opt-in", () => {
-            const table = new Table<string, IPerson>();
+            const table = createTable<string, IPerson>(false);
             table.set("1", { name: "Alice", age: 30 });
             table.set("2", { name: "Bob", age: 25 });
             table.set("3", { name: "Charlie", age: 35 });
@@ -296,7 +296,7 @@ describe("Table", () => {
         });
 
         test("memoization toggling multiple times", () => {
-            const table = new Table<string, IPerson>();
+            const table = createTable<string, IPerson>();
             table.set("1", { name: "Alice", age: 30 });
             table.sort((a, b) => a.age - b.age);
 
@@ -315,7 +315,7 @@ describe("Table", () => {
 
     describe("Indexing", () => {
         test("default partition", () => {
-            const table = new Table<string, ITaggedValue>();
+            const table = createTable<string, ITaggedValue>();
 
             table.index((value) => !value.tags.includes("IGNORE"));
 
@@ -327,7 +327,7 @@ describe("Table", () => {
         });
 
         test("should create partitions based on index definition", () => {
-            const table = new Table<string, ITaggedValue>();
+            const table = createTable<string, ITaggedValue>();
             table.set("1", { tags: ["A", "B"] });
             table.set("2", { tags: ["B", "C"] });
             table.set("3", { tags: ["C", "D"] });
@@ -341,7 +341,7 @@ describe("Table", () => {
         });
 
         test("should ignore partition names with falsy values", () => {
-            const table = new Table<string, ITaggedValue>();
+            const table = createTable<string, ITaggedValue>();
             table.set("1", { tags: ["A"] });
 
             table.index((_) => "");
@@ -362,7 +362,7 @@ describe("Table", () => {
         });
 
         test("partitions() - should return all partition names", () => {
-            const table = new Table<string, ITaggedValue>();
+            const table = createTable<string, ITaggedValue>();
             table.set("1", { tags: ["A", "B"] });
             table.set("2", { tags: ["B", "C"] });
             table.set("3", { tags: ["C", "D"] });
@@ -376,7 +376,7 @@ describe("Table", () => {
         });
 
         test("should update partitions correctly when values are added, updated or removed", () => {
-            const table = new Table<string, ITaggedValue>();
+            const table = createTable<string, ITaggedValue>();
             table.index((value) => value.tags);
 
             // Add values
@@ -405,7 +405,7 @@ describe("Table", () => {
         });
 
         test("eager subscriptions - should be able to subscribe before a value is added", () => {
-            const table = new Table<string, ITaggedValue>();
+            const table = createTable<string, ITaggedValue>();
             table.index((value) => value.tags);
 
             const callback = vi.fn();
@@ -420,7 +420,7 @@ describe("Table", () => {
         });
 
         test("should return empty table for non-existent partition", () => {
-            const table = new Table<string, ITaggedValue>();
+            const table = createTable<string, ITaggedValue>();
             table.index((value) => value.tags);
 
             const partition = table.partition("NonExistent");
@@ -428,7 +428,7 @@ describe("Table", () => {
         });
 
         test("should handle null/undefined values in index definition", () => {
-            const table = new Table<string, ITaggedValue>();
+            const table = createTable<string, ITaggedValue>();
             table.index((value) => {
                 if (value.tags.includes("IGNORE")) {
                     return null;
@@ -451,7 +451,7 @@ describe("Table", () => {
         });
 
         test("should re-index when index definition is changed", () => {
-            const table = new Table<string, ITaggedValue>();
+            const table = createTable<string, ITaggedValue>();
             table.set("1", { tags: ["A"] });
             table.set("2", { tags: ["B"] });
             table.set("3", { tags: ["C"] });
@@ -472,7 +472,7 @@ describe("Table", () => {
         });
 
         test("should delete partitions when index is removed", () => {
-            const table = new Table<string, ITaggedValue>();
+            const table = createTable<string, ITaggedValue>();
             table.set("1", { tags: ["A"] });
             table.set("2", { tags: ["B"] });
 
@@ -489,7 +489,7 @@ describe("Table", () => {
         });
 
         test("creating filtered views via indexing", () => {
-            const table = new Table<string, ITaggedValue>();
+            const table = createTable<string, ITaggedValue>();
 
             table.set("1", { tags: ["include"] });
             table.set("2", { tags: ["exclude"] });
@@ -511,7 +511,7 @@ describe("Table", () => {
         });
 
         test("custom partition initialization", () => {
-            const table = new Table<string, ITaggedValue>();
+            const table = createTable<string, ITaggedValue>();
             table.set("1", { tags: ["A", "IGNORE", "C"] });
             table.set("2", { tags: ["B", "IGNORE"] });
             table.set("3", { tags: ["A"] });
@@ -537,7 +537,7 @@ describe("Table", () => {
         });
 
         test("re-indexing", () => {
-            const table = new Table<string, ITaggedValue>();
+            const table = createTable<string, ITaggedValue>();
             table.set("1", { tags: ["A", "B"] });
             table.set("2", { tags: ["B", "C"] });
 
@@ -558,14 +558,14 @@ describe("Table", () => {
         });
 
         test("re-index is no-op if index definition is not provided", () => {
-            const table = new Table<string, ITaggedValue>();
+            const table = createTable<string, ITaggedValue>();
             table.set("1", { tags: ["A"] });
             table.index();
             expect(table.partitions().length).toBe(0);
         });
 
         test("nested indexing", () => {
-            const table = new Table<string, { level1: string; level2: string; level3: string }>();
+            const table = createTable<string, { level1: string; level2: string; level3: string }>();
 
             table.index(
                 (v) => v.level1,
@@ -590,7 +590,7 @@ describe("Table", () => {
         });
 
         test("many empty partitions", () => {
-            const table = new Table<string, { id: number }>();
+            const table = createTable<string, { id: number }>();
             table.index((v) => `partition${v.id}`);
 
             // Create many partitions by accessing them
@@ -605,7 +605,7 @@ describe("Table", () => {
         });
 
         test("index definition that returns different lengths of arrays", () => {
-            const table = new Table<string, { tags: string[] }>();
+            const table = createTable<string, { tags: string[] }>();
             table.index((v) => v.tags);
 
             table.set("1", { tags: [] }); // Empty array
@@ -624,7 +624,7 @@ describe("Table", () => {
         });
 
         test("circular-like reference in index definition", () => {
-            const table = new Table<string, INode>();
+            const table = createTable<string, INode>();
 
             // Index by parent id (could create circular dependencies)
             table.index((node) => node.parent?.id ?? "root");
@@ -644,7 +644,7 @@ describe("Table", () => {
         });
 
         test("changing value that affects multiple indexed partitions simultaneously", () => {
-            const table = new Table<string, { status: string; priority: string }>();
+            const table = createTable<string, { status: string; priority: string }>();
 
             table.index(
                 () => ["byStatus", "byPriority"],
@@ -672,7 +672,7 @@ describe("Table", () => {
         });
 
         test("indexing with special characters in partition names", () => {
-            const table = new Table<string, { category: string }>();
+            const table = createTable<string, { category: string }>();
             table.index((value) => value.category);
 
             table.set("1", { category: "normal" });
@@ -689,7 +689,7 @@ describe("Table", () => {
         });
 
         test("indexing with null and undefined in partition names array", () => {
-            const table = new Table<string, { tags: (string | null | undefined)[] }>();
+            const table = createTable<string, { tags: (string | null | undefined)[] }>();
             table.index((value) => value.tags as string[]);
 
             table.set("1", { tags: ["valid", null, undefined, "another"] });
@@ -704,8 +704,8 @@ describe("Table", () => {
 
     describe("Sorting", () => {
         test("sorting values by comparator", () => {
-            const table = new Table<string, IPerson>();
-            table.memo(true);
+            const table = createTable<string, IPerson>(true);
+
             table.set("1", { name: "Alice", age: 30 });
             table.set("2", { name: "Bob", age: 25 });
             table.set("3", { name: "Charlie", age: 35 });
@@ -720,7 +720,7 @@ describe("Table", () => {
         });
 
         test("sort order should be cleared when comparator is null", () => {
-            const table = new Table<string, IPerson>();
+            const table = createTable<string, IPerson>();
             table.set("1", { name: "Alice", age: 30 });
             table.set("2", { name: "Bob", age: 25 });
 
@@ -736,13 +736,12 @@ describe("Table", () => {
         });
 
         test("sort order consistency when values are added, updated or removed when memoized", () => {
-            const table = new Table<string, IPerson>();
+            const table = createTable<string, IPerson>(true /* memo */);
             table.set("1", { name: "Alice", age: 30 });
             table.set("2", { name: "Bob", age: 25 });
             table.set("3", { name: "Charlie", age: 35 });
 
             table.sort((a, b) => a.age - b.age);
-            table.memo(); // Enable memoization to retain order
 
             expect(table.keys()).toYieldOrdered(["2", "1", "3"]);
 
@@ -756,7 +755,7 @@ describe("Table", () => {
         });
 
         test("sort order consistency when values are added, updated or removed when not memoized", () => {
-            const table = new Table<string, IPerson>();
+            const table = createTable<string, IPerson>();
             table.set("1", { name: "Alice", age: 30 });
             table.set("2", { name: "Bob", age: 25 });
             table.set("3", { name: "Charlie", age: 35 });
@@ -775,7 +774,7 @@ describe("Table", () => {
         });
 
         test("should notify listeners when sort is applied (with empty delta because values themselves weren't updated)", () => {
-            const table = new Table<string, IPerson>();
+            const table = createTable<string, IPerson>();
             table.set("1", { name: "Alice", age: 30 });
             table.set("2", { name: "Bob", age: 25 });
 
@@ -787,7 +786,7 @@ describe("Table", () => {
         });
 
         test("should notify listeners when sort is cleared", () => {
-            const table = new Table<string, IPerson>();
+            const table = createTable<string, IPerson>();
             table.set("1", { name: "Alice", age: 30 });
             table.set("2", { name: "Bob", age: 25 });
             table.sort((a, b) => a.age - b.age);
@@ -800,7 +799,7 @@ describe("Table", () => {
         });
 
         test("should apply sort order to partitions recursively and eagerly", () => {
-            const table = new Table<string, IPerson>();
+            const table = createTable<string, IPerson>();
             table.index((person) => (person.age < 30 ? "Under30" : "Over30"));
             table.sort((a, b) => a.age - b.age); // Eagerly apply sort at root
 
@@ -822,7 +821,7 @@ describe("Table", () => {
         });
 
         test("Large data set for sorting correctness (numeric keys and memoization)", () => {
-            const table = new Table<number, IPerson>();
+            const table = createTable<number, IPerson>(true);
 
             const totalEntries = 10000;
 
@@ -833,8 +832,6 @@ describe("Table", () => {
                     t.set(i, { name: `Person${i}`, age });
                 }
             });
-
-            table.memo();
 
             // Sort by age ascending and memoize
             table.sort((a, b) => a.age - b.age);
@@ -865,7 +862,7 @@ describe("Table", () => {
         });
 
         test("re-sorting", () => {
-            const table = new Table<string, IPerson>();
+            const table = createTable<string, IPerson>();
             table.set("1", { name: "Alice", age: 30 });
             table.set("2", { name: "Bob", age: 25 });
             table.set("3", { name: "Charlie", age: 35 });
@@ -887,7 +884,7 @@ describe("Table", () => {
         });
 
         test("re-sorting is no-op if comparator is not provided", () => {
-            const table = new Table<string, IPerson>();
+            const table = createTable<string, IPerson>();
             table.set("1", { name: "Alice", age: 30 });
             table.set("2", { name: "Bob", age: 25 });
 
@@ -899,7 +896,7 @@ describe("Table", () => {
         });
 
         test("partition inherits sorting from parent correctly", () => {
-            const table = new Table<string, IPerson>();
+            const table = createTable<string, IPerson>();
             table.sort((a, b) => a.age - b.age);
             table.index((p) => (p.age < 30 ? "Young" : "Old"));
 
@@ -913,7 +910,7 @@ describe("Table", () => {
         });
 
         test("sorting with equal values - stability test", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
             // Multiple items with same priority
             table.set("1", { title: "First", priority: 10 });
             table.set("2", { title: "Second", priority: 10 });
@@ -933,7 +930,7 @@ describe("Table", () => {
         });
 
         test("sorting after clear() and re-adding data", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
             table.set("1", { title: "Task A", priority: 10 });
             table.set("2", { title: "Task B", priority: 5 });
 
@@ -953,7 +950,7 @@ describe("Table", () => {
 
     describe("Touch", () => {
         test("touching a key should refresh it's index position and sort order", () => {
-            const table = new Table<string, IPerson>();
+            const table = createTable<string, IPerson>();
 
             // An index config that can be tweaked externally
             const config = {
@@ -1004,7 +1001,7 @@ describe("Table", () => {
         });
 
         test("touch propagates through nested partitions", () => {
-            const table = new Table<string, { country: string; age: number }>();
+            const table = createTable<string, { country: string; age: number }>();
 
             table.index(
                 (v) => v.country,
@@ -1030,7 +1027,7 @@ describe("Table", () => {
 
     describe("Batching", () => {
         test("batch updates track changes correctly", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
 
             table.batch((t) => {
                 t.set("1", { title: "Task One*" });
@@ -1046,7 +1043,7 @@ describe("Table", () => {
         });
 
         test("batch updates notify subscribers once even if there are multiple updates", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
 
             const callback = vi.fn();
             table.subscribe(callback);
@@ -1062,7 +1059,7 @@ describe("Table", () => {
         });
 
         test("exception during batch - changes should get reverted - no notification", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
             const subscriber = vi.fn();
             table.subscribe(subscriber);
 
@@ -1081,7 +1078,7 @@ describe("Table", () => {
         });
 
         test("batch with only deletes of non-existent keys", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
             const subscriber = vi.fn();
             table.subscribe(subscriber);
 
@@ -1096,7 +1093,7 @@ describe("Table", () => {
         });
 
         test("should allow modifications via external reference in a batch (even though it's not essential)", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
 
             table.batch((t) => {
                 // Allowed
@@ -1110,7 +1107,7 @@ describe("Table", () => {
         });
 
         test("should not allow sort,index and memo via external reference in a batch (because these can't be reverted if batch fails)", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
 
             expect(() =>
                 table.batch(() => {
@@ -1132,7 +1129,7 @@ describe("Table", () => {
         });
 
         test("subscriptions for batch operations", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
 
             const callback = vi.fn();
             table.subscribe(callback);
@@ -1150,7 +1147,7 @@ describe("Table", () => {
         });
 
         test("batch with no operations does not trigger notification", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
             const subscriber = vi.fn();
             table.subscribe(subscriber);
 
@@ -1163,7 +1160,7 @@ describe("Table", () => {
         });
 
         test("batch with set, delete, set of same key", () => {
-            const table = new Table<string, ITask>();
+            const table = createTable<string, ITask>();
             const subscriber = vi.fn();
             table.subscribe(subscriber);
 
@@ -1180,3 +1177,10 @@ describe("Table", () => {
         });
     });
 });
+
+// Helper function to create a Table with random memoization if not specified (this is to test both memoized and non-memoized scenarios)
+function createTable<K, V>(memo?: boolean): Table<K, V> {
+    const table = new Table<K, V>();
+    table.memo(memo ?? Math.random() < 0.5);
+    return table;
+}
