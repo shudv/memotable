@@ -82,10 +82,10 @@ describe("useTable", () => {
         const initialCount = renderCount;
 
         act(() => {
-            table.batch(() => {
-                table.set("task-1", { id: "task-1", title: "Task 1", completed: false });
-                table.set("task-2", { id: "task-2", title: "Task 2", completed: false });
-                table.set("task-3", { id: "task-3", title: "Task 3", completed: false });
+            table.batch((t) => {
+                t.set("task-1", { id: "task-1", title: "Task 1", completed: false });
+                t.set("task-2", { id: "task-2", title: "Task 2", completed: false });
+                t.set("task-3", { id: "task-3", title: "Task 3", completed: false });
             });
         });
 

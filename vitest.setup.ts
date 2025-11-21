@@ -4,11 +4,11 @@ expect.extend({
     toYield<T>(received: Iterable<T>, expected: T[]) {
         return this.equals(Array.from(received).sort(), expected.sort())
             ? {
-                  message: () => `expected ${received} not to yield ${expected}`,
+                  message: () => `expected ${Array.from(received)} not to yield ${expected}`,
                   pass: true,
               }
             : {
-                  message: () => `expected ${received} to yield ${expected}`,
+                  message: () => `expected ${Array.from(received)} to yield ${expected}`,
                   pass: false,
               };
     },
@@ -19,11 +19,11 @@ expect.extend({
             expected,
         )
             ? {
-                  message: () => `expected ${received} not to yield ${expected}`,
+                  message: () => `expected ${Array.from(received)} not to yield ${expected}`,
                   pass: true,
               }
             : {
-                  message: () => `expected ${received} to yield ${expected}`,
+                  message: () => `expected ${Array.from(received)} to yield ${expected}`,
                   pass: false,
               };
     },
