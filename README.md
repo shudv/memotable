@@ -122,7 +122,7 @@ function TaskList({ taskTable }) {
     useTable(taskTable); // ✅ Subscription that is only notified when this table gets updated
     return (
         <div>
-            {taskTable.toArray().map((t) => (
+            {[...taskTable.values()].map((t) => (
                 <Task key={t.id} {...t} />
             ))}
         </div>
@@ -314,7 +314,6 @@ Creates a new table with key type `K` and value type `V`.
 - `keys(): MapIterator<K>` - Iterate over keys (respects sorting if enabled)
 - `values(): MapIterator<V>` - Iterate over values (respects sorting if enabled)
 - `entries(): MapIterator<[K, V]>` - Iterate over key-value pairs
-- `toArray(): readonly V[]` - Get all values as an array
 - `forEach<T>(callbackfn, thisArg?): void` - Execute a function for each entry
 
 #### Indexing
