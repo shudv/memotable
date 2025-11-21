@@ -52,7 +52,7 @@ It provides:
 
 ### Comparison with vanilla implementation
 
-Sample todo app with filtering and sorting, setup using vanilla JS-
+Sample todo app with filtering and sorting, setup using vanilla JS (write friendly)-
 
 ```ts
 // Simple array holding all todo's
@@ -74,7 +74,7 @@ getTodos((todo) => todo.listId == "list1"); // Get todo's in "list1"
 getTodos((todo) => todo.isImportant); // Get important todo's
 ```
 
-Identical app setup using `memotable`-
+Identical app setup using `memotable` (read friendly)-
 
 ```ts
 // Table of todos
