@@ -341,9 +341,7 @@ export class Table<K, V> implements ITable<K, V> {
      * @param updatedKeys Array of keys that have been updated
      */
     private _propagateChanges(updatedKeys: Iterable<K>): void {
-        if (this._pendingBatch) {
-            return;
-        }
+        this._throwIfPendingBatch();
 
         // Step 1: Update indexes if any
         this._applyIndexUpdate(updatedKeys);

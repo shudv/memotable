@@ -1092,18 +1092,27 @@ describe("Table", () => {
             expect(subscriber).not.toHaveBeenCalled();
         });
 
-        test("should allow modifications via external reference in a batch (even though it's not essential)", () => {
+        test("should allow modifications via external reference in a batch (because it's not necessary and can make things complicated)", () => {
             const table = createTable<string, ITask>();
+            table.set("1", { title: "Initial Task" });
 
-            table.batch((t) => {
-                // Allowed
-                t.set("1", { title: "Task One" });
+            expect(() =>
+                table.batch(() => {
+                    table.set("2", { title: "New task" });
+                }),
+            ).toThrow();
 
-                // Direct modification outside of batch context
-                table.set("2", { title: "Task Two" });
-            });
+            expect(() =>
+                table.batch(() => {
+                    table.delete("1");
+                }),
+            ).toThrow();
 
-            expect(table.keys()).toYield(["1", "2"]);
+            expect(() =>
+                table.batch(() => {
+                    table.touch("1");
+                }),
+            ).toThrow();
         });
 
         test("should not allow sort,index and memo via external reference in a batch (because these can't be reverted if batch fails)", () => {
