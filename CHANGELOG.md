@@ -1,5 +1,11 @@
 # memotable
 
+## 3.1.4
+
+### Patch Changes
+
+- 3d14fb8: Do not export print function
+
 ## 3.1.3
 
 ### Patch Changes
