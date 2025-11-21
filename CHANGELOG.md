@@ -1,5 +1,11 @@
 # memotable
 
+## 3.1.3
+
+### Patch Changes
+
+- d75c529: Bug fixes + trim some JS
+
 ## 3.1.2
 
 ### Patch Changes
