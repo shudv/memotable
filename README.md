@@ -52,7 +52,7 @@ It provides:
 
 ### Comparison with vanilla implementation
 
-Sample todo app with filtering and sorting, setup using vanilla TS-
+Sample todo app with filtering and sorting, setup using vanilla JS-
 
 ```ts
 // Simple array holding all todo's

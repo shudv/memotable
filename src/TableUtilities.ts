@@ -36,7 +36,7 @@ function toStringInternal<K, V>(
 
     if (partitions.length === 0 && table.size > 0) {
         // Leaf node - print the items
-        const values = table.toArray();
+        const values = [...table.values()];
         for (let i = 0; i < values.length; i++) {
             const value = values[i]!;
             const isLastItem = i === values.length - 1;
