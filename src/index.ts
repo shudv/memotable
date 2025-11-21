@@ -7,4 +7,4 @@ export { type IObservableTable } from "./contracts/IObservableTable";
 
 // Implementations
 export { Table } from "./Table";
-export { print } from "./TableUtilities";
+export { toString } from "./TableUtilities";

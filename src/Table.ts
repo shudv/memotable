@@ -1,9 +1,10 @@
 // Contracts
-import { ITable, TBatchable } from "./contracts/ITable";
+import { IBatch } from "./contracts/IBatchableTable";
 import { IComparator } from "./contracts/ISortableTable";
 import { IIndexDefinition } from "./contracts/IIndexableTable";
 import { IReadonlyTable } from "./contracts/IReadonlyTable";
 import { ITableSubscriber } from "./contracts/IObservableTable";
+import { ITable } from "./contracts/ITable";
 
 // Default partition name for unnamed partitions
 const __DEFAULT_PARTITION__ = "__DEFAULT__";
@@ -109,6 +110,8 @@ export class Table<K, V> implements ITable<K, V> {
     private _shouldMemoize: boolean = false;
 
     public memo(flag?: boolean): void {
+        this._throwIfPendingBatch();
+
         this._shouldMemoize = flag ?? true;
 
         // Step 1: Propagate memoization to all partitions
@@ -144,16 +147,16 @@ export class Table<K, V> implements ITable<K, V> {
     }
 
     public clear(): void {
-        // Step 1: Clear indexes and sorting
+        // Step 1: Clear derived structures
         this.index(null);
         this.sort(null);
 
         // Step 2: Capture keys and clear the main map
-        const allKeys = Array.from(this._map.keys());
-        this._map.clear();
-
-        // Step 3: Notify listeners about all cleared keys
-        this._notifyListeners(allKeys);
+        this.batch((t) => {
+            for (const key of this._map.keys()) {
+                t.delete(key);
+            }
+        });
     }
 
     // #endregion
@@ -161,19 +164,25 @@ export class Table<K, V> implements ITable<K, V> {
     // #region BATCHING
 
     // Flag to indicate if a batch operation is in progress
-    private _isBatchOperationInProgress = false;
-    private _keysUpdatedInCurrentBatch = new Set<K>();
+    private _pendingBatch: Batch<K, V> | null = null;
 
-    public batch(fn: (t: TBatchable<K, V>) => void): void {
-        // Step 1: Run the batch of operations and mark start and end to disable change propagation on every set/delete
-        this._isBatchOperationInProgress = true;
-        fn(this);
-        this._isBatchOperationInProgress = false;
+    public batch(fn: (t: IBatch<K, V>) => void): void {
+        // Step 1: Run the batch of operations and mark start and end to disable change propagation on every change
+        try {
+            this._pendingBatch = new Batch<K, V>(this._map);
+            fn(this._pendingBatch);
+        } catch (e) {
+            this._pendingBatch = null;
+            throw e;
+        }
 
-        // Step 2: After the batch is complete, propagate all accumulated changes
-        if (this._keysUpdatedInCurrentBatch.size > 0) {
-            this._propagateChanges(this._keysUpdatedInCurrentBatch);
-            this._keysUpdatedInCurrentBatch.clear();
+        // Step 2: Apply all changes to the internal map and reset batch
+        const keys = this._pendingBatch.apply();
+        this._pendingBatch = null;
+
+        // Step 3: Propagate all changes as a batch
+        if (keys.length > 0) {
+            this._propagateChanges(keys);
         }
     }
 
@@ -201,6 +210,8 @@ export class Table<K, V> implements ITable<K, V> {
     public sort(comparator: IComparator<V> | null): void;
     public sort(): void;
     public sort(comparator?: IComparator<V> | null) {
+        this._throwIfPendingBatch();
+
         // If comparator is not provided, re-apply the existing comparator
         if (comparator === undefined) {
             comparator = this._comparator;
@@ -249,6 +260,8 @@ export class Table<K, V> implements ITable<K, V> {
         definition?: IIndexDefinition<V> | null,
         partitionInitializer?: (name: string, partition: IReadonlyTable<K, V>) => void,
     ): void {
+        this._throwIfPendingBatch();
+
         // Re-index using existing definition if no new definition is provided
         if (definition === undefined && this._indexAccessor) {
             // Build index membership for all existing values
@@ -328,21 +341,18 @@ export class Table<K, V> implements ITable<K, V> {
      * @param updatedKeys Array of keys that have been updated
      */
     private _propagateChanges(updatedKeys: Iterable<K>): void {
-        if (this._isBatchOperationInProgress) {
-            // If a batch operation is in progress, we record the updated key for later processing
-            for (const key of updatedKeys) {
-                this._keysUpdatedInCurrentBatch.add(key);
-            }
-        } else {
-            // Step 1: Update indexes if any
-            this._applyIndexUpdate(updatedKeys);
-
-            // Step 2: Update view
-            this._applyViewUpdate(updatedKeys);
-
-            // Step 3: Notify subscribers about the changes
-            this._notifyListeners(updatedKeys);
+        if (this._pendingBatch) {
+            return;
         }
+
+        // Step 1: Update indexes if any
+        this._applyIndexUpdate(updatedKeys);
+
+        // Step 2: Update view
+        this._applyViewUpdate(updatedKeys);
+
+        // Step 3: Notify subscribers about the changes
+        this._notifyListeners(updatedKeys);
     }
 
     /**
@@ -502,10 +512,83 @@ export class Table<K, V> implements ITable<K, V> {
         return (k1, k2) => _comparator(this._map.get(k1)!, this._map.get(k2)!);
     }
 
+    /** Throw operation not allowed error if a batch operation is pending */
+    private _throwIfPendingBatch() {
+        if (this._pendingBatch) {
+            throw new Error("OperationNotAllowed");
+        }
+    }
+
     // #endregion
 }
 
 // #endregion
+
+/**
+ * An object that holds batch updates to be applied to a target map.
+ */
+class Batch<K, V> implements IBatch<K, V> {
+    // Tracks keys (and the new values) that have been updated in this batch
+    private _updates = new Map<K, V>();
+
+    // Tracks keys that have been deleted in this batch
+    private _deletes = new Set<K>();
+
+    /**
+     * Creates an instance of batch
+     * @param _targetMap The target map to which the batch updates will be applied
+     */
+    public constructor(private readonly _targetMap: Map<K, V>) {}
+
+    public set(key: K, value: V) {
+        this._updates.set(key, value);
+        this._deletes.delete(key); // In case it was marked for deletion earlier
+    }
+
+    public delete(key: K) {
+        if (this._updates.has(key)) {
+            this._updates.delete(key); // In case it was marked for update earlier
+        }
+
+        if (!this._deletes.has(key) && this._targetMap.has(key)) {
+            this._deletes.add(key);
+        }
+    }
+
+    public touch(key: K): void {
+        if (this._updates.has(key) || this._deletes.has(key)) {
+            return; // No-op if key is already marked for update or deletion
+        }
+
+        // Otherwise, based on the current committed value, mark for update or deletion
+        const currentValue = this._targetMap.get(key);
+        if (currentValue !== undefined) {
+            this.set(key, currentValue);
+        } else {
+            this.delete(key);
+        }
+    }
+
+    /**
+     * Apply the accumulated edits to the target map
+     * @returns Array of keys that were changed
+     */
+    public apply(): K[] {
+        if (this._updates.size > 0) {
+            for (const [key, value] of this._updates) {
+                this._targetMap.set(key, value);
+            }
+        }
+
+        if (this._deletes.size > 0) {
+            for (const key of this._deletes) {
+                this._targetMap.delete(key);
+            }
+        }
+
+        return [...this._updates.keys(), ...this._deletes];
+    }
+}
 
 // #region UTILITIES
 

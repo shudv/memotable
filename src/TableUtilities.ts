@@ -6,12 +6,12 @@ import { IReadonlyTable } from "./contracts/IReadonlyTable";
  * @param toString Function to convert values to string for display
  * @param title Title of the root table
  */
-export function print<K, V>(
+export function toString<K, V>(
     table: IReadonlyTable<K, V>,
     toString: (value: V) => string,
     title: string = "root",
-): void {
-    printTable(table, toString, title, "", true);
+): string {
+    return toStringInternal(table, toString, title, "", true);
 }
 
 /**
@@ -21,15 +21,15 @@ export function print<K, V>(
  * @param title Title of the current table or partition
  * @param isLast Whether this is the last partition at the current level
  */
-function printTable<K, V>(
+function toStringInternal<K, V>(
     table: IReadonlyTable<K, V>,
     toString: (value: V) => string,
     title: string,
     indent: string,
     isLast: boolean,
-): void {
+): string {
     const prefix = indent + (isLast ? "└── " : "├── ");
-    console.log(`${prefix}${title} (${table.size})` + (table.isMemoized() ? " [*]" : ""));
+    let result = `${prefix}${title} (${table.size})` + (table.isMemoized() ? " [*]" : "") + "\n";
 
     const partitions = table.partitions();
     const childIndent = indent + (isLast ? "    " : "│   ");
@@ -40,7 +40,7 @@ function printTable<K, V>(
         for (let i = 0; i < values.length; i++) {
             const value = values[i]!;
             const isLastItem = i === values.length - 1;
-            console.log(`${childIndent + (isLastItem ? "└── " : "├── ")}${toString(value)}`);
+            result += `${childIndent + (isLastItem ? "└── " : "├── ")}${toString(value)}` + "\n";
         }
     } else {
         // Recurse into partitions
@@ -48,7 +48,15 @@ function printTable<K, V>(
             const partitionTitle = partitions[i]![0];
             const partition = table.partition(partitionTitle);
             const isLastPartition = i === partitions.length - 1;
-            printTable(partition, toString, partitionTitle, childIndent, isLastPartition);
+            result += toStringInternal(
+                partition,
+                toString,
+                partitionTitle,
+                childIndent,
+                isLastPartition,
+            );
         }
     }
+
+    return result;
 }
