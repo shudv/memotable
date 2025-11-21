@@ -45,6 +45,62 @@ It provides:
 
 💡 You can think of memotable as a utility that lets you **shape your data** into a **render-ready** form, and then keeps that shape up to date automatically and efficiently as edits come in.
 
+**Benefits:**
+
+- **Lighter render passes** – Heavy operations like sorting and indexing are applied outside the render loop.
+- **Less re-renders** – A table partition notifies subscribers only when it sees any change.
+
+### Comparison with vanilla implementation
+
+Sample todo app with filtering and sorting, setup using vanilla TS-
+
+```ts
+// Simple array holding all todo's
+const todos: ITodop[] = [];
+
+// Generic function to get todo's that match any filter criteria
+function getTodos(filter: (todo: ITodo) => boolean): ITodo[] {
+    return Array.from(todos.values())
+        .filter((todo) => filter(todo) && todo.title.includes(KEYWORD)) // Matches custom filter AND applied keyword
+        .sort(
+            (a, b) =>
+                Number(b.isImportant) - Number(a.isImportant) ||
+                a.createdDate.getTime() - b.createdDate.getTime(),
+        );
+}
+
+// Reading specific sets
+getTodos((todo) => todo.listId == "list1"); // Get todo's in "list1"
+getTodos((todo) => todo.isImportant); // Get important todo's
+```
+
+Identical app setup using `memotable`-
+
+```ts
+// Table of todos
+const todos = new Table();
+
+// Register partition index
+todos.index(
+    (todo) => [todo.listId, todo.isImportant ? "Important" : null], // Specify which all partitions a todo belongs to
+    (_, p) => {
+        p.index(
+            (todo) => todo.title.includes(KEYWORD), // Matches applied keyword
+            (_, p) => p.memo(), // Memo the filtered partition for fast reads
+        );
+        p.sort(
+            (a, b) =>
+                Number(b.isImportant) - Number(a.isImportant) ||
+                a.createdDate.getTime() - b.createdDate.getTime(),
+        );
+    },
+);
+
+// Reading specific partitions
+todos.partition("list1"); // Get todo's in "list1"
+todos.partition("Important"); // Get important todo's
+```
+
 ## Using memotable
 
 Simple indexing and sorting in a React component
@@ -149,84 +205,6 @@ table.index(
     },
 );
 ```
-
-Comparison with vanilla implementation-
-
-<table>
-<tr>
-<th style="text-align:center;">Vanilla</th>
-<th style="text-align:center;">Memotable</th>
-</tr>
-<tr>
-<td>
-
-<pre><code class="language-ts">
-// Filter defines which todo's to read
-function getTodos(filter: (todo: ITodo) => boolean): ITodo[] {
-    return Array.from(todos.values())
-        .filter(
-            (todo) =>
-                filter(todo) &&
-
-                // Apply additional keyword filter on top of given filter
-                todo.title
-                    .toLowerCase()
-                    .includes((config.get(KEYWORD_CONFIG_ID) ?? "").toLowerCase()),
-        )
-        // 2-factor sorting: important first, then by created date
-        .sort((a, b) => {
-            if (a.isImportant && !b.isImportant) {
-                return -1;
-            } else if (!a.isImportant && b.isImportant) {
-                return 1;
-            } else {
-                return a.createdDate.getTime() - b.createdDate.getTime();
-            }
-        });
-}
-</code></pre>
-
-</td>
-<td>
-
-<pre><code class="language-ts">
-// Register partition index
-TodoTable.index(
-    (todo) => [todo.listId, todo.isImportant ? "Important" : null], // Specify which all partitions a todo belongs to
-    (_, partition) => {
-        // Every parition is further filtered by keyword from config table
-        partition.index(
-            (todo) =>
-                todo.title
-                    .toLowerCase()
-                    .includes((ConfigTable.get(KEYWORD_CONFIG_ID) ?? "").toLowerCase()),
-
-            // Memoize the filtered partitions for better read performance
-            (_, partition) => partition.memo(),
-        );
-
-        // Sort todos within each partition using 2-factor sorting: important first, then by created date
-        partition.sort((a, b) => {
-            if (a.isImportant && !b.isImportant) {
-                return -1;
-            } else if (!a.isImportant && b.isImportant) {
-                return 1;
-            } else {
-                return a.createdDate.getTime() - b.createdDate.getTime();
-            }
-        });
-    },
-);
-</code></pre>
-
-</td>
-</tr>
-</table>
-
-**Benefits:**
-
-- **Lighter render passes** – Heavy operations like sorting and indexing are applied outside the render loop.
-- **Less re-renders** – A table partition notifies subscribers only when it sees any change.
 
 ## Quick Start
 
@@ -384,7 +362,3 @@ MIT
 - 📖 [Read the full example](./examples/react/TodoAppMemotable.tsx)
 - 🚀 [Try it live](https://codesandbox.io/p/sandbox/c9lv4v)
 - 💬 [Open an issue](https://github.com/shudv/memotable/issues) or contribute on GitHub
-
-```
-
-```
