@@ -110,15 +110,6 @@ describe("Table", () => {
             expect(callback).toHaveBeenCalledWith({ title: "Task Two" }, "2", table);
         });
 
-        test("toArray() - should return values as an array", () => {
-            const table = createTable<string, ITask>();
-
-            table.set("1", { title: "Task One" });
-            table.set("2", { title: "Task Two" });
-
-            expect(table.toArray()).toEqual([{ title: "Task One" }, { title: "Task Two" }]);
-        });
-
         test("clear() - should remove all items and clear indexing and sorting", () => {
             const table = createTable<string, ITask>();
 
@@ -247,6 +238,19 @@ describe("Table", () => {
             expect(subscriber1).toHaveBeenCalledTimes(1); // Still 1
             expect(subscriber2).toHaveBeenCalledTimes(2);
             expect(subscriber3).toHaveBeenCalledTimes(2);
+        });
+
+        test("subscriber throws an error", () => {
+            const table = new Table<string, ITask>();
+            const subscriber = vi.fn(() => {
+                throw new Error("SubscriberError");
+            });
+
+            table.subscribe(subscriber);
+
+            expect(() => {
+                table.set("1", { title: "Task 1" });
+            }).toThrow();
         });
     });
 

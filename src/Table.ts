@@ -7,7 +7,7 @@ import { ITableSubscriber } from "./contracts/IObservableTable";
 import { ITable } from "./contracts/ITable";
 
 // Default partition name for unnamed partitions
-const __DEFAULT_PARTITION__ = "__DEFAULT__";
+const __DEFAULT_PARTITION__ = "_default_";
 
 /**
  * Table implementation that supports basic CRUD, batching, indexing and sorting.
@@ -61,32 +61,21 @@ export class Table<K, V> implements ITable<K, V> {
             : valueIterator;
     }
 
-    public entries(): MapIterator<[K, V]> {
-        const keyIterator = this.keys(); // already sorted (memoized or fresh)
-        const map = this._map;
+    public *entries(): MapIterator<[K, V]> {
+        const keys = this.keys();
+        const values = this.values();
 
-        return {
-            [Symbol.iterator]() {
-                return this;
-            },
-            next(): IteratorResult<[K, V]> {
-                const { value: key, done } = keyIterator.next();
-                if (done) {
-                    return { done: true, value: undefined };
-                }
-                return { done: false, value: [key, map.get(key)!] };
-            },
-        };
-    }
+        do {
+            const key = keys.next();
+            const value = values.next();
 
-    public toArray(): readonly V[] {
-        const { _comparator } = this;
-        if (this._sortedValues) {
-            return this._sortedValues;
-        }
+            if (key.done || value.done) {
+                // If one ends early, we stop.
+                return;
+            }
 
-        const valuesArray = Array.from(this._map.values());
-        return _comparator ? valuesArray.sort(_comparator) : valuesArray;
+            yield [key.value, value.value];
+        } while (true);
     }
 
     public [Symbol.iterator](): MapIterator<[K, V]> {
@@ -544,11 +533,10 @@ class Batch<K, V> implements IBatch<K, V> {
     }
 
     public delete(key: K) {
-        if (this._updates.has(key)) {
-            this._updates.delete(key); // In case it was marked for update earlier
-        }
+        this._updates.delete(key); // In case it was marked for update earlier
 
-        if (!this._deletes.has(key) && this._targetMap.has(key)) {
+        // Only mark for deletion if the key exists in the target map
+        if (this._targetMap.has(key)) {
             this._deletes.add(key);
         }
     }
@@ -572,16 +560,12 @@ class Batch<K, V> implements IBatch<K, V> {
      * @returns Array of keys that were changed
      */
     public apply(): K[] {
-        if (this._updates.size > 0) {
-            for (const [key, value] of this._updates) {
-                this._targetMap.set(key, value);
-            }
+        for (const [key, value] of this._updates) {
+            this._targetMap.set(key, value);
         }
 
-        if (this._deletes.size > 0) {
-            for (const key of this._deletes) {
-                this._targetMap.delete(key);
-            }
+        for (const key of this._deletes) {
+            this._targetMap.delete(key);
         }
 
         return [...this._updates.keys(), ...this._deletes];

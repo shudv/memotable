@@ -77,7 +77,7 @@ function ListView({ title, table }: { title: string; table: IReadonlyTable<strin
         <div style={styles.listView}>
             <h3 style={styles.listViewTitle}>{title}</h3>
             <ul style={styles.listViewList}>
-                {table.toArray().map((todo) => (
+                {[...table.values()].map((todo) => (
                     <li key={todo.id} style={styles.listViewItem}>
                         <div style={styles.listViewItemTitle}>{todo.title}</div>
                         <div style={styles.listViewItemMeta}>
