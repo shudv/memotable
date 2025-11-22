@@ -7,7 +7,7 @@ import { ITableSubscriber } from "./contracts/IObservableTable";
 import { ITable } from "./contracts/ITable";
 
 // Default partition name for unnamed partitions
-const __DEFAULT_PARTITION__ = "_default_";
+const __DEFAULT_PARTITION__ = "_d_";
 
 /**
  * Table implementation that supports basic CRUD, batching, indexing and sorting.
@@ -214,7 +214,7 @@ export class Table<K, V> implements ITable<K, V> {
         }
 
         // Step 2: Unmemoize the current order because comparator has changed
-        this._sortedKeys = this._sortedValues = null;
+        this._sortedKeys = null;
 
         // Step 3: Refresh memoization based on the new comparator
         this._refreshMemoization();
@@ -251,14 +251,8 @@ export class Table<K, V> implements ITable<K, V> {
     ): void {
         this._throwIfPendingBatch();
 
-        // Re-index using existing definition if no new definition is provided
-        if (definition === undefined && this._indexAccessor) {
-            // Build index membership for all existing values
-            this._applyIndexUpdate(this.keys(), false /* values themselves are not updated */);
-            return;
-        }
-
-        if (definition == null) {
+        // Step 1: Handle clearing the index
+        if (definition === null) {
             this._indexAccessor = null;
             this._partitions.clear();
             this._partitionNames.clear();
@@ -266,30 +260,35 @@ export class Table<K, V> implements ITable<K, V> {
             return;
         }
 
-        // Normalize the definition
-        this._indexAccessor = (value: V | undefined) => {
-            if (value == undefined) {
-                return [] as readonly string[];
-            }
+        // Step 2: Setup normalized index accessor if a new definition is provided
+        this._indexAccessor = definition
+            ? (value: V | undefined) => {
+                  if (value == undefined) {
+                      return [] as readonly string[];
+                  }
 
-            const keyOrKeys = definition(value);
-            if (!keyOrKeys) {
-                return [] as readonly string[];
-            }
+                  const keyOrKeys = definition(value);
+                  if (!keyOrKeys) {
+                      return [] as readonly string[];
+                  }
 
-            if (keyOrKeys === true) {
-                return [__DEFAULT_PARTITION__];
-            }
+                  if (keyOrKeys === true) {
+                      return [__DEFAULT_PARTITION__];
+                  }
 
-            return Array.isArray(keyOrKeys)
-                ? (keyOrKeys.filter(Boolean) as readonly string[])
-                : ([keyOrKeys] as readonly string[]);
-        };
+                  return Array.isArray(keyOrKeys)
+                      ? (keyOrKeys.filter(Boolean) as readonly string[])
+                      : ([keyOrKeys] as readonly string[]);
+              }
+            : this._indexAccessor;
 
+        // Step 3: Store the partition initializer if provided
         this._partitionInitializer = partitionInitializer;
 
-        // Build index membership for all existing values
-        this._applyIndexUpdate(this.keys(), false /* values themselves are not updated */);
+        // Step 4: Build index membership for all existing values
+        if (this._indexAccessor) {
+            this._applyIndexUpdate(this.keys(), false /* values themselves are not updated */);
+        }
     }
 
     public partition(name?: string): IReadonlyTable<K, V> {
@@ -502,7 +501,7 @@ export class Table<K, V> implements ITable<K, V> {
     /** Throw operation not allowed error if a batch operation is pending */
     private _throwIfPendingBatch() {
         if (this._pendingBatch) {
-            throw new Error("OperationNotAllowed");
+            throw new Error("NotAllowed");
         }
     }
 
