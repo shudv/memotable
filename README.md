@@ -59,9 +59,13 @@ Sample todo app with filtering and sorting, setup using vanilla JS (write friend
 const todos = new Map<string, ITodo>();
 
 // Generic function to get todo's that match any filter criteria
-function getTodos(filter: (todo: ITodo) => boolean): ITodo[] {
+function getTodos(group: string): ITodo[] {
     return Array.from(todos.values())
-        .filter((todo) => filter(todo) && todo.title.includes(KEYWORD)) // Matches custom filter AND applied keyword
+        .filter(
+            (todo) =>
+                (group === "Important" ? todo.isImportant : todo.listId === group) && // Matches group filter
+                todo.title.includes(KEYWORD), // Matches keyword filter
+        )
         .sort(
             (a, b) =>
                 Number(b.isImportant) - Number(a.isImportant) ||
@@ -69,9 +73,9 @@ function getTodos(filter: (todo: ITodo) => boolean): ITodo[] {
         );
 }
 
-// Reading specific sets
-getTodos((todo) => todo.listId == "list1"); // Get todo's in "list1"
-getTodos((todo) => todo.isImportant); // Get important todo's
+// Reading specific groups
+getTodos("list1"); // Get todo's in "list1"
+getTodos("Important"); // Get important todo's
 
 // Update a todo
 todo.set("1", { title: "Updated title" });
