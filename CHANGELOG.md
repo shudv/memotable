@@ -1,5 +1,11 @@
 # memotable
 
+## 3.1.5
+
+### Patch Changes
+
+- 37fc579: Trim a few bytes of JS from the bundle
+
 ## 3.1.4
 
 ### Patch Changes
