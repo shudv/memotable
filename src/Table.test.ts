@@ -1041,6 +1041,28 @@ describe("Table", () => {
             expect(subscriber).not.toHaveBeenCalled();
         });
 
+        test("exception during batch - subsequent batches should work correctly", () => {
+            const table = createTable<string, ITask>();
+
+            // First batch throws
+            expect(() => {
+                table.batch((t) => {
+                    t.set("1", { title: "Task 1" });
+                    throw new Error("Batch failed");
+                });
+            }).toThrow();
+
+            // Subsequent batch should work fine
+            expect(() => {
+                table.batch((t) => {
+                    t.set("2", { title: "Task 2" });
+                });
+            }).not.toThrow();
+
+            expect(table.size).toBe(1);
+            expect(table.get("2")?.title).toBe("Task 2");
+        });
+
         test("batch with only deletes of non-existent keys", () => {
             const table = createTable<string, ITask>();
             const subscriber = vi.fn();
