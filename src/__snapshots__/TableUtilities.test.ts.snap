@@ -74,7 +74,7 @@ exports[`TableUtilities > toString 1`] = `
     │               ├── Park Street (88000)
     │               └── Salt Lake (70000)
     ├── byCountry (31)
-    │   ├── USA (7) [*]
+    │   ├── USA (7)
     │   │   ├── Manhattan (100000)
     │   │   ├── Brooklyn (80000)
     │   │   ├── Downtown (60000)
@@ -98,7 +98,7 @@ exports[`TableUtilities > toString 1`] = `
     │   ├── Germany (2)
     │   │   ├── Mitte (80000)
     │   │   └── Altstadt (60000)
-    │   └── India (11) [*]
+    │   └── India (11)
     │       ├── Connaught Place (120000)
     │       ├── Colaba (110000)
     │       ├── Indiranagar (105000)
