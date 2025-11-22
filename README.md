@@ -72,6 +72,9 @@ function getTodos(filter: (todo: ITodo) => boolean): ITodo[] {
 // Reading specific sets
 getTodos((todo) => todo.listId == "list1"); // Get todo's in "list1"
 getTodos((todo) => todo.isImportant); // Get important todo's
+
+// Update a todo
+todo.set("1", { title: "Updated title" });
 ```
 
 Identical app setup using `memotable` (read friendly)-
@@ -99,6 +102,9 @@ todos.index(
 // Reading specific partitions
 todos.partition("list1"); // Get todo's in "list1"
 todos.partition("Important"); // Get important todo's
+
+// Update a todo (identical to vanilla)
+todo.set("1", { title: "Updated title" });
 ```
 
 ## Using memotable
@@ -106,24 +112,24 @@ todos.partition("Important"); // Get important todo's
 Simple indexing and sorting in a React component
 
 ```tsx
-const taskTable = new Table<string, Task>();
+const table = new Table<string, Task>();
 
 // ✅ Comparator applied and maintained incrementally
-taskTable.sort((task1, task2) => task1.title.localeCompare(task2.title));
+table.sort((task1, task2) => task1.title.localeCompare(task2.title));
 
 // ✅ Index + memo enables fast per list reads
-taskTable.index(
+table.index(
     (task) => task.listId,
     (_, list) => list.memo(),
 );
 
 // ✅ Generic React component that renders a table of tasks
-function TaskList({ taskTable }) {
-    useTable(taskTable); // ✅ Subscription that is only notified when this table gets updated
+function TaskList({ table }) {
+    useTable(table); // ✅ Subscription that is only notified when this table gets updated
     return (
         <div>
-            {[...taskTable.values()].map((t) => (
-                <Task key={t.id} {...t} />
+            {Array.from(table, ([id, task]) => (
+                <Task key={id} {...task} />
             ))}
         </div>
     );
