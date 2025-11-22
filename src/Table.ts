@@ -112,10 +112,6 @@ export class Table<K, V> implements ITable<K, V> {
         this._refreshMemoization();
     }
 
-    public isMemoized(): boolean {
-        return this._shouldMemoize;
-    }
-
     // #endregion
 
     // #region WRITES
@@ -157,16 +153,26 @@ export class Table<K, V> implements ITable<K, V> {
 
     public batch(fn: (t: IBatch<K, V>) => void): void {
         // Step 1: Run the batch of operations and mark start and end to disable change propagation on every change
+        const batch = new Batch<K, V>(this._map);
+        this._pendingBatch = batch;
         try {
-            this._pendingBatch = new Batch<K, V>(this._map);
-            fn(this._pendingBatch);
+            fn(batch);
         } catch (e) {
             this._pendingBatch = null;
             throw e;
         }
 
         // Step 2: Apply all changes to the internal map and reset batch
-        const keys = this._pendingBatch.apply();
+        for (const [key, value] of batch._updates) {
+            this._map.set(key, value);
+        }
+
+        for (const key of batch._deletes) {
+            this._map.delete(key);
+        }
+
+        const keys = [...batch._updates.keys(), ...batch._deletes];
+
         this._pendingBatch = null;
 
         // Step 3: Propagate all changes as a batch
@@ -433,6 +439,7 @@ export class Table<K, V> implements ITable<K, V> {
 
         let i = 0; // Iterator for current view array
         let j = 0; // Iterator for updatedKeys array
+
         while (i < unchangedKeys.length || j < updatedKeys.length) {
             // Pick one key from current view and one from updatedKeys array
             const unchangedId = i < unchangedKeys.length ? unchangedKeys[i] : null;
@@ -515,10 +522,10 @@ export class Table<K, V> implements ITable<K, V> {
  */
 class Batch<K, V> implements IBatch<K, V> {
     // Tracks keys (and the new values) that have been updated in this batch
-    private _updates = new Map<K, V>();
+    public _updates = new Map<K, V>();
 
     // Tracks keys that have been deleted in this batch
-    private _deletes = new Set<K>();
+    public _deletes = new Set<K>();
 
     /**
      * Creates an instance of batch
@@ -541,33 +548,10 @@ class Batch<K, V> implements IBatch<K, V> {
     }
 
     public touch(key: K): void {
-        if (this._updates.has(key) || this._deletes.has(key)) {
-            return; // No-op if key is already marked for update or deletion
-        }
-
-        // Otherwise, based on the current committed value, mark for update or deletion
         const currentValue = this._targetMap.get(key);
         if (currentValue !== undefined) {
             this.set(key, currentValue);
-        } else {
-            this.delete(key);
         }
-    }
-
-    /**
-     * Apply the accumulated edits to the target map
-     * @returns Array of keys that were changed
-     */
-    public apply(): K[] {
-        for (const [key, value] of this._updates) {
-            this._targetMap.set(key, value);
-        }
-
-        for (const key of this._deletes) {
-            this._targetMap.delete(key);
-        }
-
-        return [...this._updates.keys(), ...this._deletes];
     }
 }
 

@@ -9,10 +9,4 @@ export interface IMemoizable {
      * available even if they are not currently referenced.
      */
     memo(flag?: boolean): void;
-
-    /**
-     * Check if the table is currently memoized
-     * @returns True if the table is memoized, false otherwise
-     */
-    isMemoized(): boolean;
 }

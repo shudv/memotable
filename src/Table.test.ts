@@ -255,61 +255,16 @@ describe("Table", () => {
     });
 
     describe("Memoization", () => {
-        test("should memoize partitions which opt-in", () => {
-            const table = createTable<string, IPerson>(false);
-            table.set("1", { name: "Alice", age: 30 });
-            table.set("2", { name: "Bob", age: 25 });
-            table.set("3", { name: "Charlie", age: 35 });
-            table.set("4", { name: "Dave", age: 20 });
-
-            table.index(
-                (person) => (person.age < 30 ? "Under30" : "Over30"),
-                (name, partition) => {
-                    partition.memo(name === "Under30"); // Enable memoization for partitions
-                },
-            );
-
-            // Apply sort and track comparator calls
-            table.sort((a, b) => a.age - b.age);
-
-            expect(table.isMemoized()).toBe(false);
-            expect(table.partition("Under30").isMemoized()).toBe(true);
-            expect(table.partition("Over30").isMemoized()).toBe(false);
-
-            // Memoize the entire table
-            table.memo();
-
-            expect(table.isMemoized()).toBe(true);
-            expect(table.partition("Under30").isMemoized()).toBe(true);
-            expect(table.partition("Over30").isMemoized()).toBe(true);
-
-            expect(table.keys()).toYieldOrdered(["4", "2", "1", "3"]);
-            expect(table.values()).toYieldOrdered([
-                { name: "Dave", age: 20 },
-                { name: "Bob", age: 25 },
-                { name: "Alice", age: 30 },
-                { name: "Charlie", age: 35 },
-            ]);
-
-            // Unmemoize the entire table
-            table.memo(false);
-
-            expect(table.isMemoized()).toBe(false);
-            expect(table.partition("Under30").isMemoized()).toBe(false);
-            expect(table.partition("Over30").isMemoized()).toBe(false);
-        });
-
         test("memoization toggling multiple times", () => {
             const table = createTable<string, IPerson>();
             table.set("1", { name: "Alice", age: 30 });
             table.sort((a, b) => a.age - b.age);
+            table.index((person) => `${person.age}`);
 
             // Toggle memoization on and off repeatedly
             for (let i = 0; i < 10; i++) {
                 table.memo(true);
-                expect(table.isMemoized()).toBe(true);
                 table.memo(false);
-                expect(table.isMemoized()).toBe(false);
             }
 
             // Should still work correctly

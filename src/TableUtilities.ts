@@ -29,7 +29,7 @@ function toStringInternal<K, V>(
     isLast: boolean,
 ): string {
     const prefix = indent + (isLast ? "└── " : "├── ");
-    let result = `${prefix}${title} (${table.size})` + (table.isMemoized() ? " [*]" : "") + "\n";
+    let result = `${prefix}${title} (${table.size})\n`;
 
     const partitions = table.partitions();
     const childIndent = indent + (isLast ? "    " : "│   ");
