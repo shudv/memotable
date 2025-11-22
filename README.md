@@ -43,7 +43,7 @@ It provides:
 - **Sorting** — Sort at the root or any child node - applies recursively from any node to its children.
 - **Subscriptions** — Subscribe only to the specific partition you are interested in, ignoring other changes.
 
-💡 You can think of memotable as a utility that lets you **shape your data** into a **render-ready** form, and then keeps that shape up to date automatically and efficiently as edits come in.
+💡 You can think of memotable as a utility that lets you **shape your data** into a **render-ready** form, and then keeps that shape up to date automatically and efficiently as edits come in. It also enables you to **memoize** specific partitions that are frequently read for optimal performance.
 
 **Benefits:**
 
@@ -89,10 +89,10 @@ const todos = new Table<string, ITodo>();
 
 // Register partition index
 todos.index(
-    (todo) => [todo.listId, todo.isImportant ? "Important" : null], // Specify which all partitions a todo belongs to
+    (todo) => [todo.listId, todo.isImportant ? "Important" : null], // Specify which all top-level partitions a todo belongs to
     (_, p) => {
         p.index(
-            (todo) => todo.title.includes(KEYWORD), // Matches applied keyword
+            (todo) => todo.title.includes(KEYWORD), // The default partition within each top-level partition matches applied keyword
             (_, p) => p.memo(), // Memo the filtered partition for fast reads
         );
         p.sort(
@@ -104,8 +104,8 @@ todos.index(
 );
 
 // Reading specific partitions
-todos.partition("list1"); // Get todo's in "list1"
-todos.partition("Important"); // Get important todo's
+todos.partition("list1").partition(); // Get sorted & filtered todo's in "list1"
+todos.partition("Important").partition(); // Get sorted & filtered important todo's
 
 // Update a todo (identical to vanilla)
 todo.set("1", { title: "Updated title" });
