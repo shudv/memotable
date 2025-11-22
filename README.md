@@ -111,6 +111,14 @@ todos.partition("Important").partition(); // Get sorted & filtered important tod
 todo.set("1", { title: "Updated title" });
 ```
 
+## Semantics
+
+It's important to understand the semantics of `memotable` so that you can come up with the most optimal setup for your scenario. Here are the core semantics-
+
+1. A `Table` can be **recursively** split into **derived readonly copies or subsets** of itself using `index` method.
+2. Edits (`set` / `delete` / `touch`) can only be applied to the **root** node and the propagate to all derived nodes.
+3. `sort` / `memo` can be independently applied to any node and they propagate to all derived nodes.
+
 ## Using memotable
 
 Simple indexing and sorting in a React component

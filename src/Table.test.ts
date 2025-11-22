@@ -899,18 +899,23 @@ describe("Table", () => {
             expect(after).toEqual(before);
         });
 
-        test("partition inherits sorting from parent correctly", () => {
-            const table = createTable<string, IPerson>();
+        test("memo -> sort -> clear memo -> re-sort", () => {
+            const table = createTable<string, IPerson>(true);
+            table.set("1", { name: "Alice", age: 30 });
+            table.set("2", { name: "Bob", age: 25 });
+
             table.sort((a, b) => a.age - b.age);
-            table.index((p) => (p.age < 30 ? "Young" : "Old"));
 
-            table.set("1", { name: "Charlie", age: 25 });
-            table.set("2", { name: "Alice", age: 22 });
-            table.set("3", { name: "Bob", age: 27 });
+            expect(table.keys()).toYieldOrdered(["2", "1"]);
 
-            const youngKeys = Array.from(table.partition("Young").keys());
-            // Should be sorted by age
-            expect(youngKeys).toEqual(["2", "1", "3"]); // 22, 25, 27
+            table.memo(false);
+
+            table.sort((a, b) => b.age - a.age);
+
+            expect(table.values()).toYieldOrdered([
+                { name: "Alice", age: 30 },
+                { name: "Bob", age: 25 },
+            ]);
         });
 
         test("sorting with equal values - stability test", () => {
