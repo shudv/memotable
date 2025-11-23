@@ -55,7 +55,7 @@ It provides:
 Sample todo app with filtering and sorting, setup using vanilla JS (write friendly)-
 
 ```ts
-// Simple array holding all todo's
+// Simple map holding all todo's
 const todos = new Map<string, ITodo>();
 
 // Generic function to get todo's that match any filter criteria
