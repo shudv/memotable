@@ -1,5 +1,11 @@
 # memotable
 
+## 3.3.0
+
+### Minor Changes
+
+- 355ddbc: Change the order of arguments in partition initializer for easier use
+
 ## 3.2.0
 
 ### Minor Changes
