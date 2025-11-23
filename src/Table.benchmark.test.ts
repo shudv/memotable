@@ -148,14 +148,11 @@ function setupTableImplementation(tasks: Task[]): Table<string, Task> {
     // Index by list - only show incomplete tasks
     table.index(
         (task) => task.listId,
-        (_, partition) => {
-            partition.index(
+        (p) =>
+            p.index(
                 (task) => (!task.isCompleted ? "Active" : undefined),
-                (_, partition) => {
-                    partition.memo();
-                },
-            );
-        },
+                (p) => p.memo(),
+            ),
     );
 
     // Sort by importance + createdAt within each list bucket

@@ -90,10 +90,10 @@ const todos = new Table<string, ITodo>();
 // Register partition index
 todos.index(
     (todo) => [todo.listId, todo.isImportant ? "Important" : null], // Specify which all top-level partitions a todo belongs to
-    (_, p) => {
+    (p) => {
         p.index(
             (todo) => todo.title.includes(KEYWORD), // The default partition within each top-level partition matches applied keyword
-            (_, p) => p.memo(), // Memo the filtered partition for fast reads
+            (p) => p.memo(), // Memo the filtered partition for fast reads
         );
         p.sort(
             (a, b) =>
@@ -132,7 +132,7 @@ table.sort((task1, task2) => task1.title.localeCompare(task2.title));
 // ✅ Index + memo enables fast per list reads
 table.index(
     (task) => task.listId,
-    (_, list) => list.memo(),
+    (list) => list.memo(),
 );
 
 // ✅ Generic React component that renders a table of tasks
@@ -141,7 +141,7 @@ function TaskList({ table }) {
     return (
         <div>
             {Array.from(table, ([id, task]) => (
-                <Task key={id} {...task} />
+                <Task key={id} task={task} />
             ))}
         </div>
     );
@@ -172,21 +172,21 @@ table = new Table<string, Location>();
 // Define complex multi-level hierarchical partitioning
 table.index(
     () => ["nested", "byCountry", "byCity"], // 3 top level partitions
-    (name, partition) => {
+    (p, name) => {
         switch (name) {
             case "nested":
-                partition.index(
+                p.index(
                     // Nested level 1: Index by country
                     (l) => l.country,
-                    (_, country) => {
+                    (country) => {
                         // Nested level 2: Within each country, index by region
                         country.index(
                             (l) => l.region,
-                            (_, region) => {
+                            (region) => {
                                 // Nested level 3: Within each region, index by city
                                 region.index(
                                     (l) => l.city,
-                                    (_, city) => {
+                                    (city) => {
                                         // Sort each city partition by population
                                         city.sort((a, b) => b.population - a.population);
                                     },
@@ -197,23 +197,23 @@ table.index(
                 );
                 break;
             case "byCountry":
-                partition.index(
+                p.index(
                     (l) => l.country,
-                    (countryName, country) => {
+                    (country, name) => {
                         // Sort each country partition by population
                         country.sort((a, b) => b.population - a.population);
 
                         // IMPORTANT: Memoize only (large + frequently read) partitions
-                        if (countryName === "India" || countryName === "USA") {
+                        if (name === "India" || name === "USA") {
                             country.memo();
                         }
                     },
                 );
                 break;
             case "byCity":
-                partition.index(
+                p.index(
                     (l) => l.city,
-                    (_, city) => {
+                    (city) => {
                         // Sort each city partition by name
                         city.sort((a, b) => a.city.localeCompare(b.city));
                     },

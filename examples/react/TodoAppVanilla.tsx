@@ -18,15 +18,11 @@ function getTodos(filter: (todo: ITodo) => boolean): ITodo[] {
                     .toLowerCase()
                     .includes((config.get(KEYWORD_CONFIG_ID) ?? "").toLowerCase()),
         )
-        .sort((a, b) => {
-            if (a.isImportant && !b.isImportant) {
-                return -1;
-            } else if (!a.isImportant && b.isImportant) {
-                return 1;
-            } else {
-                return a.createdDate.getTime() - b.createdDate.getTime();
-            }
-        });
+        .sort(
+            (a, b) =>
+                Number(b.isImportant) - Number(a.isImportant) ||
+                a.createdDate.getTime() - b.createdDate.getTime(),
+        );
 }
 
 // Utility to add a random todos
