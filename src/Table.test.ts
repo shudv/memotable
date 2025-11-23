@@ -98,18 +98,6 @@ describe("Table", () => {
             ]);
         });
 
-        test("forEach() - should execute callback for each key/value pair", () => {
-            const table = createTable<string, ITask>();
-
-            table.set("1", { title: "Task One" });
-            table.set("2", { title: "Task Two" });
-
-            const callback = vi.fn();
-            table.forEach(callback);
-            expect(callback).toHaveBeenCalledWith({ title: "Task One" }, "1", table);
-            expect(callback).toHaveBeenCalledWith({ title: "Task Two" }, "2", table);
-        });
-
         test("clear() - should remove all items and clear indexing and sorting", () => {
             const table = createTable<string, ITask>();
 
@@ -255,61 +243,16 @@ describe("Table", () => {
     });
 
     describe("Memoization", () => {
-        test("should memoize partitions which opt-in", () => {
-            const table = createTable<string, IPerson>(false);
-            table.set("1", { name: "Alice", age: 30 });
-            table.set("2", { name: "Bob", age: 25 });
-            table.set("3", { name: "Charlie", age: 35 });
-            table.set("4", { name: "Dave", age: 20 });
-
-            table.index(
-                (person) => (person.age < 30 ? "Under30" : "Over30"),
-                (name, partition) => {
-                    partition.memo(name === "Under30"); // Enable memoization for partitions
-                },
-            );
-
-            // Apply sort and track comparator calls
-            table.sort((a, b) => a.age - b.age);
-
-            expect(table.isMemoized()).toBe(false);
-            expect(table.partition("Under30").isMemoized()).toBe(true);
-            expect(table.partition("Over30").isMemoized()).toBe(false);
-
-            // Memoize the entire table
-            table.memo();
-
-            expect(table.isMemoized()).toBe(true);
-            expect(table.partition("Under30").isMemoized()).toBe(true);
-            expect(table.partition("Over30").isMemoized()).toBe(true);
-
-            expect(table.keys()).toYieldOrdered(["4", "2", "1", "3"]);
-            expect(table.values()).toYieldOrdered([
-                { name: "Dave", age: 20 },
-                { name: "Bob", age: 25 },
-                { name: "Alice", age: 30 },
-                { name: "Charlie", age: 35 },
-            ]);
-
-            // Unmemoize the entire table
-            table.memo(false);
-
-            expect(table.isMemoized()).toBe(false);
-            expect(table.partition("Under30").isMemoized()).toBe(false);
-            expect(table.partition("Over30").isMemoized()).toBe(false);
-        });
-
         test("memoization toggling multiple times", () => {
             const table = createTable<string, IPerson>();
             table.set("1", { name: "Alice", age: 30 });
             table.sort((a, b) => a.age - b.age);
+            table.index((person) => `${person.age}`);
 
             // Toggle memoization on and off repeatedly
             for (let i = 0; i < 10; i++) {
                 table.memo(true);
-                expect(table.isMemoized()).toBe(true);
                 table.memo(false);
-                expect(table.isMemoized()).toBe(false);
             }
 
             // Should still work correctly
@@ -1086,6 +1029,28 @@ describe("Table", () => {
             expect(subscriber).not.toHaveBeenCalled();
         });
 
+        test("exception during batch - subsequent batches should work correctly", () => {
+            const table = createTable<string, ITask>();
+
+            // First batch throws
+            expect(() => {
+                table.batch((t) => {
+                    t.set("1", { title: "Task 1" });
+                    throw new Error("Batch failed");
+                });
+            }).toThrow();
+
+            // Subsequent batch should work fine
+            expect(() => {
+                table.batch((t) => {
+                    t.set("2", { title: "Task 2" });
+                });
+            }).not.toThrow();
+
+            expect(table.size).toBe(1);
+            expect(table.get("2")?.title).toBe("Task 2");
+        });
+
         test("batch with only deletes of non-existent keys", () => {
             const table = createTable<string, ITask>();
             const subscriber = vi.fn();
@@ -1192,6 +1157,64 @@ describe("Table", () => {
 
             // Should be notified once for key "1"
             expect(subscriber).toHaveBeenCalledWith(["1"]);
+        });
+    });
+
+    describe("Stability", () => {
+        test("multiple operations maintain internal consistency", () => {
+            const table = createTable<string, ITaggedValue>();
+            table.index((value) => value.tags);
+
+            expect(() => {
+                table.batch((t) => {
+                    t.set("1", { tags: ["A", "B"] });
+                    t.set("2", { tags: ["B", "C"] });
+                    t.set("3", { tags: ["C", "D"] });
+                    throw new Error("Intentional failure");
+                });
+            }).toThrow();
+
+            // Table should be empty after failed batch
+            expect(table.size).toBe(0);
+            expect(table.partition("A").size).toBe(0);
+            expect(table.partition("B").size).toBe(0);
+            expect(table.partition("C").size).toBe(0);
+            expect(table.partition("D").size).toBe(0);
+
+            // Now do a successful batch with sorting
+            table.batch((t) => {
+                t.set("1", { tags: ["A", "B"] });
+                t.set("2", { tags: ["B", "C"] });
+                t.set("3", { tags: ["C", "D"] });
+            });
+
+            table.sort((a, b) => a.tags.length - b.tags.length);
+
+            expect(table.keys()).toYieldOrdered(["1", "2", "3"]);
+            expect(table.partition("A").keys()).toYield(["1"]);
+            expect(table.partition("B").keys()).toYieldOrdered(["1", "2"]);
+            expect(table.partition("C").keys()).toYieldOrdered(["2", "3"]);
+            expect(table.partition("D").keys()).toYield(["3"]);
+
+            table.clear();
+
+            expect(table.size).toBe(0);
+            expect(table.partition("A").size).toBe(0);
+            expect(table.partition("B").size).toBe(0);
+            expect(table.partition("C").size).toBe(0);
+            expect(table.partition("D").size).toBe(0);
+
+            // Add more data
+            table.batch((t) => {
+                t.set("4", { tags: ["A", "D"] });
+                t.set("5", { tags: ["B", "E"] });
+            });
+
+            expect(table.size).toBe(2);
+            expect(table.partition("A").keys()).toYield([]);
+            expect(table.partition("B").keys()).toYield([]);
+            expect(table.partition("D").keys()).toYield([]);
+            expect(table.partition("E").keys()).toYield([]);
         });
     });
 });
