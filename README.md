@@ -352,7 +352,6 @@ Creates a new table with key type `K` and value type `V`.
 #### Memoization
 
 - `memo(flag?: boolean): void` - Enable or disable memoization (default: true)
-- `isMemoized(): boolean` - Check if memoization is enabled
 
 #### Subscriptions
 
