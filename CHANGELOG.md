@@ -1,5 +1,11 @@
 # memotable
 
+## 3.2.0
+
+### Minor Changes
+
+- cff6c4f: Simplify API surface
+
 ## 3.1.5
 
 ### Patch Changes
