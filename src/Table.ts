@@ -254,7 +254,7 @@ export class Table<K, V> implements ITable<K, V> {
     private _indexAccessor: ((value: V | undefined) => readonly string[]) | null = null;
 
     /** Optional partition initializer function */
-    private _partitionInitializer?: (name: string, partition: IReadonlyTable<K, V>) => void;
+    private _partitionInitializer?: (partition: IReadonlyTable<K, V>, name: string) => void;
 
     /** Map of keys to their current partition names (used for diffing against new updates) */
     private _partitionNames: Map<K, readonly string[]> = new Map();
@@ -264,13 +264,13 @@ export class Table<K, V> implements ITable<K, V> {
 
     public index(
         definition: IIndexDefinition<V>,
-        partitionInitializer?: (name: string, partition: IReadonlyTable<K, V>) => void,
+        partitionInitializer?: (partition: IReadonlyTable<K, V>, name: string) => void,
     ): void;
     public index(definition: null): void;
     public index(): void;
     public index(
         definition?: IIndexDefinition<V> | null,
-        partitionInitializer?: (name: string, partition: IReadonlyTable<K, V>) => void,
+        partitionInitializer?: (partition: IReadonlyTable<K, V>, name: string) => void,
     ): void {
         this._throwIfBatchOperationInProgress();
 
@@ -338,7 +338,7 @@ export class Table<K, V> implements ITable<K, V> {
             table.memo(this._shouldMemoize);
 
             // Step 3: Initialize the partition if an initializer is provided
-            this._partitionInitializer?.(name, table);
+            this._partitionInitializer?.(table, name);
 
             // Step 4: Store and return the partition
             this._partitions.set(name, table);

@@ -14,28 +14,24 @@ const ConfigTable = new Table<string, string>(); // Configuration table (contain
 // Register partition index
 TodoTable.index(
     (todo) => [todo.listId, todo.isImportant ? "Important" : null], // Specify which all partitions a todo belongs to
-    (_, partition) => {
+    (p) => {
         // Every parition is further filtered by keyword from config table
-        partition.index(
+        p.index(
             (todo) =>
                 todo.title
                     .toLowerCase()
                     .includes((ConfigTable.get(KEYWORD_CONFIG_ID) ?? "").toLowerCase()),
 
             // Memoize the filtered partitions for better read performance
-            (_, partition) => partition.memo(),
+            (p) => p.memo(),
         );
 
         // Sort todos within each partition using 2-factor sorting: important first, then by created date
-        partition.sort((a, b) => {
-            if (a.isImportant && !b.isImportant) {
-                return -1;
-            } else if (!a.isImportant && b.isImportant) {
-                return 1;
-            } else {
-                return a.createdDate.getTime() - b.createdDate.getTime();
-            }
-        });
+        p.sort(
+            (a, b) =>
+                Number(b.isImportant) - Number(a.isImportant) ||
+                a.createdDate.getTime() - b.createdDate.getTime(),
+        );
     },
 );
 
@@ -54,7 +50,7 @@ function addRandomTodo(count: number) {
             const id = `todo-${Date.now()}-${Math.random()}`;
             t.set(id, {
                 id,
-                title: `Task ${TodoTable.size + 1}`,
+                title: `Task ${i + 1}`,
                 listId: "List " + Math.floor(1 + Math.random() * 5),
                 isImportant: Math.random() < 0.3,
                 createdDate: new Date(),

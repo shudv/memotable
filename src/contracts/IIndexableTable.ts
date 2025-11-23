@@ -51,8 +51,8 @@ export interface IIndexableTable<K, V> {
     index(
         definition: IIndexDefinition<V>,
         partitionInitializer?: (
-            name: string,
             partition: Pick<IReadonlyTable<K, V>, "sort" | "index" | "memo">,
+            name: string,
         ) => void,
     ): void;
 

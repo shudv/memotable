@@ -465,7 +465,7 @@ describe("Table", () => {
 
             table.index(
                 (value) => value.tags,
-                (name, partition) => {
+                (partition, name) => {
                     switch (name) {
                         case "IGNORE":
                             // Sort values with "IGNORE" tag by number of tags descending
@@ -516,10 +516,10 @@ describe("Table", () => {
 
             table.index(
                 (v) => v.level1,
-                (_, p1) => {
+                (p1) => {
                     p1.index(
                         (v) => v.level2,
-                        (_, p2) => {
+                        (p2) => {
                             p2.index((v) => v.level3);
                         },
                     );
@@ -595,7 +595,7 @@ describe("Table", () => {
 
             table.index(
                 () => ["byStatus", "byPriority"],
-                (name, partition) => {
+                (partition, name) => {
                     if (name === "byStatus") {
                         partition.index((v) => v.status);
                     } else if (name === "byPriority") {
@@ -957,7 +957,7 @@ describe("Table", () => {
 
             table.index(
                 (v) => v.country,
-                (_, partition) => {
+                (partition) => {
                     partition.index((v) => (v.age < 18 ? "minor" : "adult"));
                 },
             );
