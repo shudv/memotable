@@ -274,7 +274,7 @@ Memotable is optimized for **read-heavy workloads**. The tradeoff: slower writes
 
 ### Real-world benchmark
 
-Scenario: 50 lists with 1000 tasks per list with list-based indexing, importance filtering, and two-factor sorting (importance + timestamp). Simulates a typical task management app with 400 reads and 100 writes.
+Scenario: 50 lists with 1000 tasks per list with list-based indexing, importance filtering, and two-factor sorting (importance + timestamp). Simulates a typical task management app with 800 reads and 200 writes.
 
 | Operation    | vanilla     | memotable  | Difference      |
 | ------------ | ----------- | ---------- | --------------- |
