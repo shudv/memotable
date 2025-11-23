@@ -40,8 +40,8 @@ export class Table<K, V> implements ITable<K, V> {
         }
 
         // Otherwise, if comparator is available sort at read time, else return native iterator
-        const { _comparator } = this;
-        const keyIterator = this._map.keys();
+        const { _comparator, _map } = this;
+        const keyIterator = _map.keys();
         return _comparator
             ? Array.from(keyIterator).sort(this._keyComparator(_comparator))[Symbol.iterator]()
             : keyIterator;
@@ -54,8 +54,8 @@ export class Table<K, V> implements ITable<K, V> {
         }
 
         // Otherwise, if comparator is available sort at read time, else return native iterator
-        const { _comparator } = this;
-        const valueIterator = this._map.values();
+        const { _comparator, _map } = this;
+        const valueIterator = _map.values();
         return _comparator
             ? Array.from(valueIterator).sort(_comparator)[Symbol.iterator]()
             : valueIterator;
@@ -80,13 +80,6 @@ export class Table<K, V> implements ITable<K, V> {
 
     public [Symbol.iterator](): MapIterator<[K, V]> {
         return this.entries();
-    }
-
-    public forEach<T>(callbackfn: (value: V, key: K, map: this) => void, thisArg?: T) {
-        // Iterate in the same order as keys(), sorted or insertion order
-        for (const [key, value] of this) {
-            callbackfn.call(thisArg, value, key, this);
-        }
     }
 
     public touch(key: K): void {
@@ -116,10 +109,9 @@ export class Table<K, V> implements ITable<K, V> {
 
     // #region WRITES
 
-    public set(key: K, value: V): this {
+    public set(key: K, value: V): void {
         this._map.set(key, value);
         this._propagateChanges([key]);
-        return this;
     }
 
     public delete(key: K): boolean {
@@ -294,7 +286,7 @@ export class Table<K, V> implements ITable<K, V> {
         // Step 2: Setup normalized index accessor if a new definition is provided
         this._indexAccessor = definition
             ? (value: V | undefined) => {
-                  if (value == undefined) {
+                  if (value == null /** or undefined */) {
                       return [] as readonly string[];
                   }
 
@@ -505,7 +497,7 @@ export class Table<K, V> implements ITable<K, V> {
     private _refreshMemoization(): void {
         const { _sortedKeys, _comparator } = this;
 
-        // Table should be memoized when a comparator is set and memoization is enabled
+        // Table should be memoized when a comparator is set (otherwise memoization is not super helpful)
         const memoize = _comparator !== null && this._shouldMemoize;
 
         // Case 1: Memoize if not already memoized

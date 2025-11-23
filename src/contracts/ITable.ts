@@ -8,7 +8,21 @@ import { IReadonlyTable } from "./IReadonlyTable";
  * @template K Type of the keys
  * @template V Type of the stored values
  */
-export interface ITable<K, V> extends IReadonlyTable<K, V>, Map<K, V>, IBatchableTable<K, V> {
+export interface ITable<K, V>
+    extends IReadonlyTable<K, V>,
+        Omit<Map<K, V>, "forEach" | "set">,
+        IBatchableTable<K, V> {
+    /**
+     * Set or update the value associated with the given key.
+     *
+     * If the key already exists, its value is replaced. If not, a new
+     * key/value pair is added to the table.
+     *
+     * @param key Key of the item being set.
+     * @param value Value to associate with the key.
+     */
+    set(key: K, value: V): void;
+
     /**
      * Marks a value as changed without replacing it.
      *
@@ -18,11 +32,4 @@ export interface ITable<K, V> extends IReadonlyTable<K, V>, Map<K, V>, IBatchabl
      * @param key Key of the item being refreshed.
      */
     touch(key: K): void;
-
-    /**
-     * Executes a provided function once for each key/value pair in the table.
-     * @param callbackfn Function to execute for each element.
-     * @param thisArg Value to use as `this` when executing `callbackfn`.
-     */
-    forEach<T>(callbackfn: (value: V, key: K, table: ITable<K, V>) => void, thisArg?: T): void;
 }

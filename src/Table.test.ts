@@ -98,18 +98,6 @@ describe("Table", () => {
             ]);
         });
 
-        test("forEach() - should execute callback for each key/value pair", () => {
-            const table = createTable<string, ITask>();
-
-            table.set("1", { title: "Task One" });
-            table.set("2", { title: "Task Two" });
-
-            const callback = vi.fn();
-            table.forEach(callback);
-            expect(callback).toHaveBeenCalledWith({ title: "Task One" }, "1", table);
-            expect(callback).toHaveBeenCalledWith({ title: "Task Two" }, "2", table);
-        });
-
         test("clear() - should remove all items and clear indexing and sorting", () => {
             const table = createTable<string, ITask>();
 
