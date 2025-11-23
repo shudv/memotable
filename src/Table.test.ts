@@ -1159,6 +1159,66 @@ describe("Table", () => {
             expect(subscriber).toHaveBeenCalledWith(["1"]);
         });
     });
+
+    describe("Stability", () => {
+        test("multiple operations maintain internal consistency", () => {
+            const table = createTable<string, ITaggedValue>();
+            table.index((value) => value.tags);
+
+            // My test should do multiple batch operations some of which should fail with a deterministic end state, some partitions should be sorted
+
+            expect(() => {
+                table.batch((t) => {
+                    t.set("1", { tags: ["A", "B"] });
+                    t.set("2", { tags: ["B", "C"] });
+                    t.set("3", { tags: ["C", "D"] });
+                    throw new Error("Intentional failure");
+                });
+            }).toThrow();
+
+            // Table should be empty after failed batch
+            expect(table.size).toBe(0);
+            expect(table.partition("A").size).toBe(0);
+            expect(table.partition("B").size).toBe(0);
+            expect(table.partition("C").size).toBe(0);
+            expect(table.partition("D").size).toBe(0);
+
+            // Now do a successful batch with sorting
+            table.batch((t) => {
+                t.set("1", { tags: ["A", "B"] });
+                t.set("2", { tags: ["B", "C"] });
+                t.set("3", { tags: ["C", "D"] });
+            });
+
+            table.sort((a, b) => a.tags.length - b.tags.length);
+
+            expect(table.keys()).toYieldOrdered(["1", "2", "3"]);
+            expect(table.partition("A").keys()).toYield(["1"]);
+            expect(table.partition("B").keys()).toYieldOrdered(["1", "2"]);
+            expect(table.partition("C").keys()).toYieldOrdered(["2", "3"]);
+            expect(table.partition("D").keys()).toYield(["3"]);
+
+            table.clear();
+
+            expect(table.size).toBe(0);
+            expect(table.partition("A").size).toBe(0);
+            expect(table.partition("B").size).toBe(0);
+            expect(table.partition("C").size).toBe(0);
+            expect(table.partition("D").size).toBe(0);
+
+            // Add more data
+            table.batch((t) => {
+                t.set("4", { tags: ["A", "D"] });
+                t.set("5", { tags: ["B", "E"] });
+            });
+
+            expect(table.size).toBe(2);
+            expect(table.partition("A").keys()).toYield([]);
+            expect(table.partition("B").keys()).toYield([]);
+            expect(table.partition("D").keys()).toYield([]);
+            expect(table.partition("E").keys()).toYield([]);
+        });
+    });
 });
 
 // Helper function to create a Table with random memoization if not specified (this is to test both memoized and non-memoized scenarios)
