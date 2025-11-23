@@ -1165,8 +1165,6 @@ describe("Table", () => {
             const table = createTable<string, ITaggedValue>();
             table.index((value) => value.tags);
 
-            // My test should do multiple batch operations some of which should fail with a deterministic end state, some partitions should be sorted
-
             expect(() => {
                 table.batch((t) => {
                     t.set("1", { tags: ["A", "B"] });
