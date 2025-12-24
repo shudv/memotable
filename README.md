@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Try it live](https://img.shields.io/badge/Try%20it-live-ff69b4)](https://codesandbox.io/p/sandbox/c9lv4v)
 
-Reactive, deeply-indexable, sortable and memoizable maps — all in **<1.5 KB**.  
+Reactive, deeply-indexable, sortable and memoizable maps — all in **<1 KB**.  
 Written in TypeScript with full type definitions. Side-effects free.
 
 > **The correct way to memoize indexed and ordered keyed-collections.**
@@ -90,10 +90,8 @@ const todos = new Table<string, ITodo>();
 todos.index(
     (todo) => [todo.listId, todo.isImportant ? "Important" : null], // Specify which all top-level partitions a todo belongs to
     (p) => {
-        p.index(
-            (todo) => todo.title.includes(KEYWORD), // The default partition within each top-level partition matches applied keyword
-            (p) => p.memo(), // Memo the filtered partition for fast reads
-        );
+        // The default partition within each top-level partition matches applied keyword
+        p.index((todo) => (todo.title.includes(KEYWORD) ? "Filtered" : null));
         p.sort(
             (a, b) =>
                 Number(b.isImportant) - Number(a.isImportant) ||
@@ -103,8 +101,8 @@ todos.index(
 );
 
 // Reading specific partitions
-todos.partition("list1").partition(); // Get sorted & filtered todo's in "list1"
-todos.partition("Important").partition(); // Get sorted & filtered important todo's
+todos.partition("list1").partition("Filtered"); // Get sorted & filtered todo's in "list1"
+todos.partition("Important").partition("Filtered"); // Get sorted & filtered important todo's
 
 // Update a todo (identical to vanilla)
 todo.set("1", { title: "Updated title" });
@@ -124,19 +122,12 @@ Simple indexing and sorting in a React component
 
 ```tsx
 const table = new Table<string, Task>();
+table.sort((task1, task2) => task1.title.localeCompare(task2.title)); // ✅ Comparator applied at root
+table.index((task) => task.listId); // ✅ List index creates a partition for every listId
 
-// ✅ Comparator applied and maintained incrementally
-table.sort((task1, task2) => task1.title.localeCompare(task2.title));
-
-// ✅ Index + memo enables fast per list reads
-table.index(
-    (task) => task.listId,
-    (list) => list.memo(),
-);
-
-// ✅ Generic React component that renders a table of tasks
-function TaskList({ table }) {
-    useTable(table); // ✅ Subscription that is only notified when this table gets updated
+// ✅ Generic React component that renders a task list
+function TaskList({ listId }) {
+    useTable(table.partition(listId)); // ✅ Subscription that is only notified when this table gets updated
     return (
         <div>
             {Array.from(table, ([id, task]) => (
@@ -146,96 +137,17 @@ function TaskList({ table }) {
     );
 }
 
-// Render lists
-<TaskList taskTable={taskTable.partition("list1")} />;
-<TaskList taskTable={taskTable.partition("list2")} />;
+// Render lists (✅ mounted/visible list gets memoized automatically enabling efficient render passes)
+<TaskList listId={"list1"} />;
+<TaskList listId={"list2"} />;
 
 // Update task table
 taskTable.set("1", { listId: "list1", title: "Task" }); // only re-renders "list1" node
 ```
 
-Complex nested index, sorting and conditional memoization
-
-```ts
-type Location = {
-    id: string;
-    country: string;
-    region: string;
-    city: string;
-    district: string;
-    population: number;
-};
-
-table = new Table<string, Location>();
-
-// Define complex multi-level hierarchical partitioning
-table.index(
-    () => ["nested", "byCountry", "byCity"], // 3 top level partitions
-    (p, name) => {
-        switch (name) {
-            case "nested":
-                p.index(
-                    // Nested level 1: Index by country
-                    (l) => l.country,
-                    (country) => {
-                        // Nested level 2: Within each country, index by region
-                        country.index(
-                            (l) => l.region,
-                            (region) => {
-                                // Nested level 3: Within each region, index by city
-                                region.index(
-                                    (l) => l.city,
-                                    (city) => {
-                                        // Sort each city partition by population
-                                        city.sort((a, b) => b.population - a.population);
-                                    },
-                                );
-                            },
-                        );
-                    },
-                );
-                break;
-            case "byCountry":
-                p.index(
-                    (l) => l.country,
-                    (country, name) => {
-                        // Sort each country partition by population
-                        country.sort((a, b) => b.population - a.population);
-
-                        // IMPORTANT: Memoize only (large + frequently read) partitions
-                        if (name === "India" || name === "USA") {
-                            country.memo();
-                        }
-                    },
-                );
-                break;
-            case "byCity":
-                p.index(
-                    (l) => l.city,
-                    (city) => {
-                        // Sort each city partition by name
-                        city.sort((a, b) => a.city.localeCompare(b.city));
-                    },
-                );
-                break;
-        }
-    },
-);
-```
-
-## Quick Start
-
-```bash
-npm install memotable
-# or
-pnpm add memotable
-# or
-yarn add memotable
-```
-
 ## Live Demo
 
-Check out the [React Todo App example](./examples/react/TodoApp.tsx) — a complete interactive demo showing indexing, partition-specific sorting, and reactive updates.
+Check out the [React Todo App example](./examples/react/TodoApp.tsx) — a demo showing how heavy data processing apps can achieve better interactivity using memotable.
 
 **Run it locally:**
 
@@ -246,14 +158,16 @@ pnpm install
 pnpm demo
 ```
 
+![Demo GIF](./examples/react/demo.gif)
+
 ## When should you use memotable?
 
 You _don't_ need it for simple apps.
 
 ✅ Use it when:
 
-- Your data set is large enough that filtering/sorting frequently can cause visible frame drops (~10ms+). (typically heavy realtime dashboards OR fully-offline apps)
-- Reads outnumber writes by at least 2-3x.
+- Your data set is large enough that filtering/sorting frequently can cause visible frame drops (~10ms+). (typically heavy realtime dashboards OR fully-offline apps) **AND**
+- Reads outnumber writes by at least **2-3x**.
 
 ## When _not_ to use memotable
 
@@ -294,7 +208,7 @@ Memotable is designed to integrate seamlessly with existing tools:
 import { useTable } from "memotable/react";
 
 function MyComponent({ table }) {
-    useTable(table); // Auto-subscribes, triggers re-render on change and cleans up on unmount
+    useTable(table); // Auto-subscribes, memoizes the data, triggers re-render on change, and cleans up on unmount
     return <div>{table.size()} values</div>;
 }
 ```
@@ -331,7 +245,6 @@ Creates a new table with key type `K` and value type `V`.
 - `keys(): MapIterator<K>` - Iterate over keys (respects sorting if enabled)
 - `values(): MapIterator<V>` - Iterate over values (respects sorting if enabled)
 - `entries(): MapIterator<[K, V]>` - Iterate over key-value pairs
-- `forEach<T>(callbackfn, thisArg?): void` - Execute a function for each entry
 
 #### Indexing
 

@@ -269,7 +269,7 @@ function benchmarkMemoTable(tasks: Task[], config: BenchmarkConfig): BenchmarkRe
     const readStart = performance.now();
     for (let i = 0; i < config.numReads; i++) {
         const listId = `list-${Math.floor(Math.random() * config.numLists)}`;
-        for (const _ of tableByList.partition(listId).partition("Active").values()) {
+        for (const [_, __] of tableByList.partition(listId).partition("Active")) {
             _counter++;
         }
     }

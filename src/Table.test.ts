@@ -261,18 +261,6 @@ describe("Table", () => {
     });
 
     describe("Indexing", () => {
-        test("default partition", () => {
-            const table = createTable<string, ITaggedValue>();
-
-            table.index((value) => !value.tags.includes("IGNORE"));
-
-            table.set("1", { tags: ["A", "B"] });
-            table.set("2", { tags: ["IGNORE", "C"] });
-            table.set("3", { tags: ["D"] });
-
-            expect(table.partition().keys()).toYield(["1", "3"]);
-        });
-
         test("should create partitions based on index definition", () => {
             const table = createTable<string, ITaggedValue>();
             table.set("1", { tags: ["A", "B"] });
@@ -292,9 +280,6 @@ describe("Table", () => {
             table.set("1", { tags: ["A"] });
 
             table.index((_) => "");
-            expect(table.partitions().length).toEqual(0);
-
-            table.index((_) => false);
             expect(table.partitions().length).toEqual(0);
 
             table.index((_) => null);
@@ -492,16 +477,18 @@ describe("Table", () => {
                 ignoredTag: "A",
             };
 
-            table.index((value) => !value.tags.some((tag) => tag === indexConfig.ignoredTag));
+            table.index((value) =>
+                !value.tags.some((tag) => tag === indexConfig.ignoredTag) ? "P" : null,
+            );
 
-            expect(table.partition().keys()).toYield(["2"]);
+            expect(table.partition("P").keys()).toYield(["2"]);
 
             // Change index configuration
             indexConfig.ignoredTag = "C";
 
             table.index(); // Re-index
 
-            expect(table.partition().keys()).toYield(["1"]);
+            expect(table.partition("P").keys()).toYield(["1"]);
         });
 
         test("re-index is no-op if index definition is not provided", () => {
