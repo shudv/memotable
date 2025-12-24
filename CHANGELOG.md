@@ -1,5 +1,11 @@
 # memotable
 
+## 3.4.0
+
+### Minor Changes
+
+- d2e1db4: Simplify Table internals and reduce bundle size
+
 ## 3.3.0
 
 ### Minor Changes
