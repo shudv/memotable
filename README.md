@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Try it live](https://img.shields.io/badge/Try%20it-live-ff69b4)](https://codesandbox.io/p/sandbox/c9lv4v)
 
-Reactive, deeply-indexable, sortable and memoizable maps — all in **<1.5 KB**.  
+Reactive, deeply-indexable, sortable and memoizable maps — all in **<1 KB**.  
 Written in TypeScript with full type definitions. Side-effects free.
 
 > **The correct way to memoize indexed and ordered keyed-collections.**
@@ -106,10 +106,6 @@ todos.partition("Important").partition("Filtered"); // Get sorted & filtered imp
 
 // Update a todo (identical to vanilla)
 todo.set("1", { title: "Updated title" });
-
-// When keyword gets updates
-for (const partitions of todos.partitions()) {
-}
 ```
 
 ## Semantics
