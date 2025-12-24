@@ -38,5 +38,5 @@ export function useTable<K, V>(table: IReadonlyTable<K, V>, memo: boolean = true
             table.memo(false);
             unsubscribe();
         };
-    });
+    }, []);
 }

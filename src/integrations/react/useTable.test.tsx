@@ -145,4 +145,27 @@ describe("useTable", () => {
             expect(memoSpy).toHaveBeenCalledWith(false);
         });
     });
+
+    describe("lifecycle", () => {
+        test("subscribes and memoizes only once on mount, not on re-renders", () => {
+            const subscribeSpy = vi.spyOn(table, "subscribe");
+            const memoSpy = vi.spyOn(table, "memo");
+
+            const { rerender } = renderHook(() => {
+                useTable(table);
+            });
+
+            expect(subscribeSpy).toHaveBeenCalledTimes(1);
+            expect(memoSpy).toHaveBeenCalledTimes(1);
+
+            // Trigger multiple re-renders
+            rerender();
+            rerender();
+            rerender();
+
+            // Subscribe and memo should still have been called only once
+            expect(subscribeSpy).toHaveBeenCalledTimes(1);
+            expect(memoSpy).toHaveBeenCalledTimes(1);
+        });
+    });
 });
