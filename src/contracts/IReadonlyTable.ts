@@ -21,7 +21,8 @@ import { ISortableTable } from "./ISortableTable";
  * @template V Type of the stored values
  */
 export interface IReadonlyTable<K, V>
-    extends Omit<ReadonlyMap<K, V>, "forEach">,
+    extends
+        Omit<ReadonlyMap<K, V>, "forEach">,
         IIndexableTable<K, V>,
         ISortableTable<V>,
         IObservableTable<K>,

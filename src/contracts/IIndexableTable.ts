@@ -25,7 +25,6 @@ export type IIndexDefinition<V> = (
     | string
     | null
     | undefined
-    | boolean
     | (string | null | undefined)[]
     | readonly (string | null | undefined)[];
 
