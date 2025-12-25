@@ -1,5 +1,11 @@
 # memotable
 
+## 3.7.0
+
+### Minor Changes
+
+- 87f65fb: Reduce bundle size further
+
 ## 3.6.0
 
 ### Minor Changes
