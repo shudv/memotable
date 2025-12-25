@@ -80,5 +80,5 @@ export interface IIndexableTable<K, V> {
     /**
      * Get all (potentially empty) partitions in this table.
      */
-    partitions(): [string, IReadonlyTable<K, V>][];
+    partitions(): MapIterator<[string, IReadonlyTable<K, V>]>;
 }

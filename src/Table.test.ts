@@ -280,16 +280,16 @@ describe("Table", () => {
             table.set("1", { tags: ["A"] });
 
             table.index((_) => "");
-            expect(table.partitions().length).toEqual(0);
+            expect(Array.from(table.partitions()).length).toEqual(0);
 
             table.index((_) => null);
-            expect(table.partitions().length).toEqual(0);
+            expect(Array.from(table.partitions()).length).toEqual(0);
 
             table.index((_) => []);
-            expect(table.partitions().length).toEqual(0);
+            expect(Array.from(table.partitions()).length).toEqual(0);
 
             table.index((_) => ["VALID", "", null]);
-            expect(table.partitions().length).toEqual(1);
+            expect(Array.from(table.partitions()).length).toEqual(1);
             expect(table.partition("VALID").size).toEqual(1);
         });
 
@@ -304,7 +304,13 @@ describe("Table", () => {
             // Eagerly access a partition to create it
             table.partition("E").sort(() => 0);
 
-            expect(table.partitions().map(([key]) => key)).toEqual(["A", "B", "C", "D", "E"]); // Should include empty "E" partition
+            expect(Array.from(table.partitions()).map(([key]) => key)).toEqual([
+                "A",
+                "B",
+                "C",
+                "D",
+                "E",
+            ]); // Should include empty "E" partition
         });
 
         test("should update partitions correctly when values are added, updated or removed", () => {
@@ -495,7 +501,7 @@ describe("Table", () => {
             const table = createTable<string, ITaggedValue>();
             table.set("1", { tags: ["A"] });
             table.index();
-            expect(table.partitions().length).toBe(0);
+            expect(Array.from(table.partitions()).length).toBe(0);
         });
 
         test("nested indexing", () => {
@@ -532,7 +538,7 @@ describe("Table", () => {
                 table.partition(`partition${i}`);
             }
 
-            expect(table.partitions().length).toBe(1000);
+            expect(Array.from(table.partitions()).length).toBe(1000);
 
             // But table is still empty
             expect(table.size).toBe(0);
@@ -1051,51 +1057,6 @@ describe("Table", () => {
 
             // Should not notify since nothing actually changed
             expect(subscriber).not.toHaveBeenCalled();
-        });
-
-        test("should allow modifications via external reference in a batch (because it's not necessary and can make things complicated)", () => {
-            const table = createTable<string, ITask>();
-            table.set("1", { title: "Initial Task" });
-
-            expect(() =>
-                table.batch(() => {
-                    table.set("2", { title: "New task" });
-                }),
-            ).toThrow();
-
-            expect(() =>
-                table.batch(() => {
-                    table.delete("1");
-                }),
-            ).toThrow();
-
-            expect(() =>
-                table.batch(() => {
-                    table.touch("1");
-                }),
-            ).toThrow();
-        });
-
-        test("should not allow sort,index and memo via external reference in a batch (because these can't be reverted if batch fails)", () => {
-            const table = createTable<string, ITask>();
-
-            expect(() =>
-                table.batch(() => {
-                    table.sort(() => 0);
-                }),
-            ).toThrow();
-
-            expect(() =>
-                table.batch(() => {
-                    table.index(() => "");
-                }),
-            ).toThrow();
-
-            expect(() =>
-                table.batch(() => {
-                    table.memo();
-                }),
-            ).toThrow();
         });
 
         test("subscriptions for batch operations", () => {

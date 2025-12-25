@@ -38,7 +38,7 @@
         "release": "pnpm changeset version && pnpm install && git add . && git commit -m 'chore: version bump' && git push",
         "publish:ci": "pnpm changeset publish",
         "prepare": "husky install",
-        "size": "pnpm build && pnpm size-limit && node measure-size.ts memo-table Table && pnpm size:mangle",
+        "size": "pnpm build && pnpm size-limit && node measure-size.ts memotable Table && pnpm size:mangle",
         "size:mangle": "npx esbuild src/index.ts --bundle --minify --mangle-props='^_' --outfile=dist/mangled.js && brotli -c dist/mangled.js | wc -c",
         "benchmark": "vitest run Table.benchmark.test.ts --testTimeout=120000 --no-coverage",
         "ci": "pnpm format && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm size"
@@ -114,7 +114,7 @@
             "name": "Table",
             "path": "dist/index.js",
             "import": "{ Table }",
-            "limit": "1500 B"
+            "limit": "1000 B"
         }
     ],
     "packageManager": "pnpm@10.26.2",

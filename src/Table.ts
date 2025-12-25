@@ -56,14 +56,9 @@ export class Table<K, V> implements ITable<K, V> {
     }
 
     public *entries(): MapIterator<[K, V]> {
-        const keys = this.keys();
-
-        do {
-            const next = keys.next();
-            if (next.done) return;
-
-            yield [next.value, this._map.get(next.value)!];
-        } while (true);
+        for (const key of this.keys()) {
+            yield [key, this._map.get(key)!];
+        }
     }
 
     public [Symbol.iterator](): MapIterator<[K, V]> {
@@ -80,8 +75,6 @@ export class Table<K, V> implements ITable<K, V> {
     private _shouldMemoize: boolean = false;
 
     public memo(flag?: boolean): void {
-        this._throwIfBatchOperationInProgress();
-
         this._shouldMemoize = flag ?? true;
 
         // Step 1: Propagate memoization to all partitions
@@ -90,7 +83,7 @@ export class Table<K, V> implements ITable<K, V> {
         }
 
         // Step 2: Refresh memoization for the current table
-        this._refreshMemoization();
+        this._refreshMemoizedData();
     }
 
     // #endregion
@@ -128,45 +121,34 @@ export class Table<K, V> implements ITable<K, V> {
 
     // #region BATCHING
 
-    // Flag to indicate if a batch operation is in progress
-    private _isBatchOperationInProgress: boolean = false;
-
     public batch(fn: (t: IBatch<K, V>) => void): void {
-        // Step 1: Run the batch of operations and mark start and end to disable change propagation on every change
-        this._isBatchOperationInProgress = true;
-
         // Tracks keys (and the new values) that have been updated in this batch
         const _updates = new Map<K, V>();
 
         // Tracks keys that have been deleted in this batch
         const _deletes = new Set<K>();
 
-        try {
-            fn({
-                set: (key: K, value: V) => {
-                    _updates.set(key, value);
-                    _deletes.delete(key); // In case it was marked for deletion earlier
-                },
-                delete: (key: K) => {
-                    _updates.delete(key); // In case it was marked for update earlier
+        fn({
+            set: (key: K, value: V) => {
+                _updates.set(key, value);
+                _deletes.delete(key); // In case it was marked for deletion earlier
+            },
+            delete: (key: K) => {
+                _updates.delete(key); // In case it was marked for update earlier
 
-                    // Only mark for deletion if the key exists in the target map
-                    if (this._map.has(key)) {
-                        _deletes.add(key);
-                    }
-                },
-                touch: (key: K): void => {
-                    const currentValue = this._map.get(key);
-                    if (currentValue !== undefined) {
-                        _updates.set(key, currentValue);
-                        _deletes.delete(key); // In case it was marked for deletion earlier
-                    }
-                },
-            });
-        } catch (e) {
-            this._isBatchOperationInProgress = false;
-            throw e;
-        }
+                // Only mark for deletion if the key exists in the target map
+                if (this._map.has(key)) {
+                    _deletes.add(key);
+                }
+            },
+            touch: (key: K): void => {
+                const currentValue = this._map.get(key);
+                if (currentValue !== undefined) {
+                    _updates.set(key, currentValue);
+                    _deletes.delete(key); // In case it was marked for deletion earlier
+                }
+            },
+        });
 
         // Step 2: Apply all changes to the internal map and reset batch
         for (const [key, value] of _updates) {
@@ -176,8 +158,6 @@ export class Table<K, V> implements ITable<K, V> {
         for (const key of _deletes) {
             this._map.delete(key);
         }
-
-        this._isBatchOperationInProgress = false;
 
         // Step 3: Propagate all changes as a batch
         const keys = [..._updates.keys(), ..._deletes];
@@ -207,11 +187,7 @@ export class Table<K, V> implements ITable<K, V> {
     private _sortedValues: V[] | null = null;
     private _comparator: IComparator<V> | null = null;
 
-    public sort(comparator: IComparator<V> | null): void;
-    public sort(): void;
     public sort(comparator?: IComparator<V> | null) {
-        this._throwIfBatchOperationInProgress();
-
         // If comparator is not provided, re-apply the existing comparator
         if (comparator === undefined) {
             comparator = this._comparator;
@@ -225,7 +201,7 @@ export class Table<K, V> implements ITable<K, V> {
         }
 
         // Step 2: Refresh memoization based on the new comparator
-        this._refreshMemoization();
+        this._refreshMemoizedData();
 
         // Step 3: Notify subscribers because we fallback to internal map enforced order
         this._notifyListeners([]);
@@ -248,17 +224,9 @@ export class Table<K, V> implements ITable<K, V> {
     private _partitions: Map<string, ITable<K, V>> = new Map();
 
     public index(
-        definition: IIndexDefinition<V>,
-        partitionInitializer?: (partition: IReadonlyTable<K, V>, name: string) => void,
-    ): void;
-    public index(definition: null): void;
-    public index(): void;
-    public index(
         definition?: IIndexDefinition<V> | null,
         partitionInitializer?: (partition: IReadonlyTable<K, V>, name: string) => void,
     ): void {
-        this._throwIfBatchOperationInProgress();
-
         // Step 1: Handle clearing the index
         if (definition === null) {
             this._indexAccessor = null;
@@ -299,8 +267,8 @@ export class Table<K, V> implements ITable<K, V> {
         return this._getPartition(name);
     }
 
-    public partitions(): [string, IReadonlyTable<K, V>][] {
-        return Array.from(this._partitions.entries());
+    public partitions(): MapIterator<[string, IReadonlyTable<K, V>]> {
+        return this._partitions.entries();
     }
 
     // #endregion
@@ -333,13 +301,11 @@ export class Table<K, V> implements ITable<K, V> {
      * @param updatedKeys Array of keys that have been updated
      */
     private _propagateChanges(updatedKeys: Iterable<K>): void {
-        this._throwIfBatchOperationInProgress();
-
         // Step 1: Update indexes if any
         this._applyIndexUpdate(updatedKeys);
 
         // Step 2: Update view
-        this._refreshMemoization();
+        this._refreshMemoizedData();
 
         // Step 3: Notify subscribers about the changes
         this._notifyListeners(updatedKeys);
@@ -424,7 +390,7 @@ export class Table<K, V> implements ITable<K, V> {
     /**
      * Refresh the memoized data based on the current comparator and memoization flag.
      */
-    private _refreshMemoization(): void {
+    private _refreshMemoizedData(): void {
         this._sortedKeys = this._sortedValues = null;
 
         // Table should be memoized when a comparator is set (otherwise memoization is not helpful)
@@ -435,13 +401,6 @@ export class Table<K, V> implements ITable<K, V> {
             for (let i = 0; i < this._sortedKeys.length; i++) {
                 this._sortedValues![i] = this._map.get(this._sortedKeys[i]!)!;
             }
-        }
-    }
-
-    /** Throw operation not allowed error if a batch operation is pending */
-    private _throwIfBatchOperationInProgress() {
-        if (this._isBatchOperationInProgress) {
-            throw new Error("NotAllowed");
         }
     }
 
