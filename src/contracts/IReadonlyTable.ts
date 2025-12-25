@@ -22,7 +22,10 @@ import { ISortableTable } from "./ISortableTable";
  */
 export interface IReadonlyTable<K, V>
     extends
-        Omit<ReadonlyMap<K, V>, "forEach">,
+        Pick<
+            ReadonlyMap<K, V>,
+            "get" | "has" | "entries" | "keys" | "values" | "size" | typeof Symbol.iterator
+        >,
         IIndexableTable<K, V>,
         ISortableTable<V>,
         IObservableTable<K>,

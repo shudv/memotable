@@ -10,8 +10,6 @@ import { IBatch, ITable } from "./contracts/ITable";
  * @template T Type of the values in the table
  */
 export class Table<K, V> implements ITable<K, V> {
-    [Symbol.toStringTag]: string = "Table";
-
     // #region READS
 
     // A map to hold the actual values in the table
@@ -105,16 +103,20 @@ export class Table<K, V> implements ITable<K, V> {
     }
 
     public clear(): void {
-        // Step 1: Clear derived structures
+        // Step 1: Clear all indexes and partitions
         this.index(null);
-        this.sort(null);
 
-        // Step 2: Capture keys and clear the main map
-        this.batch((t) => {
-            for (const key of this._map.keys()) {
-                t.delete(key);
-            }
-        });
+        // Step 2: Clear sorting
+        this._comparator = null;
+
+        // Step 3: Refresh memoization
+        this._refreshMemoizedData();
+
+        // Step 4: Notify subscribers about all cleared keys
+        this._notifyListeners(this._map.keys());
+
+        // Step 5: Clear the internal map
+        this._map.clear();
     }
 
     // #endregion
@@ -278,19 +280,19 @@ export class Table<K, V> implements ITable<K, V> {
     private _getPartition(name: string): ITable<K, V> {
         if (!this._partitions.has(name)) {
             // Step 1: Create a new partition table
-            const table = new Table<K, V>();
+            const partition = new Table<K, V>();
 
             // Step 2: Propagate parent sorting to the partition
-            table.sort(this._comparator);
+            partition.sort(this._comparator);
 
             // Step 3: Propagate memoization status to the partition
-            table.memo(this._shouldMemoize);
+            partition.memo(this._shouldMemoize);
 
             // Step 4: Initialize the partition if an initializer is provided
-            this._partitionInitializer?.(table, name);
+            this._partitionInitializer?.(partition, name);
 
             // Step 5: Store and return the partition
-            this._partitions.set(name, table);
+            this._partitions.set(name, partition);
         }
 
         return this._partitions.get(name)!;
@@ -352,11 +354,7 @@ export class Table<K, V> implements ITable<K, V> {
             }
 
             // Update the partition names map
-            if (targetPartitions.length === 0) {
-                this._partitionNames.delete(key);
-            } else {
-                this._partitionNames.set(key, targetPartitions);
-            }
+            this._partitionNames.set(key, targetPartitions);
         }
 
         // Step 2: Recursively apply the batch updates to all partitions

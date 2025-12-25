@@ -124,6 +124,45 @@ describe("Table", () => {
             expect(table.partition("Task").size).toBe(0);
             expect(table.partition("Task").values()).toYield([]);
         });
+
+        test("clear() - should notify subscribers with all keys", () => {
+            const table = createTable<string, ITask>();
+
+            table.set("1", { title: "Task One" });
+            table.set("2", { title: "Task Two" });
+
+            const callback = vi.fn();
+            table.subscribe(callback);
+
+            table.clear();
+
+            expect(callback).toHaveBeenCalledTimes(1);
+            expect(callback).toHaveBeenCalledWith(["1", "2"]);
+        });
+
+        test("clear() - should correctly clear all internal state", () => {
+            const table = createTable<string, ITask>();
+            table.set("1", { title: "Task One" });
+            table.set("2", { title: "Task Two" });
+            table.sort((a, b) => b.title.localeCompare(a.title));
+            table.index((value) => value.title.split(" "));
+            expect(table.keys()).toYieldOrdered(["2", "1"]);
+
+            table.clear();
+
+            expect(table.size).toBe(0);
+            expect(table.partition("Task").size).toBe(0);
+            expect(table.partition("Task").values()).toYield([]);
+
+            table.set("1", { title: "Task One" });
+            table.set("2", { title: "Task Two" });
+
+            // Previous indexing and sort should be cleared
+            expect(table.size).toBe(2);
+            expect(table.partition("Task").size).toBe(0);
+            expect(table.partition("Task").values()).toYield([]);
+            expect(table.keys()).toYieldOrdered(["1", "2"]);
+        });
     });
 
     describe("Subscriptions", () => {
