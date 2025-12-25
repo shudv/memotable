@@ -7,7 +7,7 @@ import { IReadonlyTable } from "./IReadonlyTable";
  * @template K Type of the keys
  * @template V Type of the stored values
  */
-export interface ITable<K, V> extends IReadonlyTable<K, V>, Omit<Map<K, V>, "forEach" | "set"> {
+export interface ITable<K, V> extends IReadonlyTable<K, V>, Pick<Map<K, V>, "clear"> {
     /**
      * Set or update the value associated with the given key.
      *

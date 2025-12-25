@@ -11,7 +11,7 @@ Written in TypeScript with full type definitions. Side-effects free.
 
 > **The correct way to memoize indexed and ordered keyed-collections.**
 >
-> Most web apps don’t need collection memoization. The DOM is almost always the real bottleneck for performance.  
+> Most web apps don’t need collection memoization. The additional code complexity is not worth it. The DOM is almost always the real bottleneck for performance.  
 > That said, when you are processing huge amounts of data (e.g. a realtime dashboard or a fully-offline app), `memotable` gives you the _correct_ memoizable primitive.
 
 ## Why memotable?
@@ -32,7 +32,7 @@ This has two fundamental problems:
 - If you mutate the array in place, `useMemo` can silently return **stale data** because the reference didn’t change.
 - If you recreate the array on every render, you pay **full recomputation cost** every time — so your “optimization” does nothing.
 
-Most of the time, you don’t need to “memoize” collections at all — just recompute them and move on. But when you _do_ need to avoid recomputation — say, thousands of values with heavy indexing/comparator logic — you need a structure that’s actually designed for that.
+Most of the time, you **don’t need** to “memoize” collections at all — just recompute them and move on. But when you _do_ need to avoid recomputation — say, thousands of values with heavy indexing/comparator logic — you need a structure that’s actually designed for that.
 
 That’s what `memotable` is.
 
@@ -42,7 +42,7 @@ It provides:
 - **Sorting** — Sort at the root or any child node - applies recursively from any node to its children.
 - **Subscriptions** — Subscribe only to the specific partition you are interested in, ignoring other changes.
 
-💡 You can think of memotable as a utility that lets you **shape your data** into a **render-ready** form, and then keeps that shape up to date automatically and efficiently as edits come in. It also enables you to **memoize** specific partitions that are frequently read for optimal performance.
+💡 You can think of memotable as a utility that lets you **shape your data** into a **render-ready** form, and then keeps that shape up to date as edits come in. It also enables you to **memoize** specific partitions that are frequently read for optimal performance.
 
 **Benefits:**
 
@@ -51,7 +51,7 @@ It provides:
 
 ### Comparison with vanilla implementation
 
-Sample todo app with filtering and sorting, setup using vanilla JS (write friendly)-
+Sample todo app with filtering and sorting, setup using vanilla JS (write-friendly data structure)-
 
 ```ts
 // Simple map holding all todo's
@@ -80,7 +80,7 @@ getTodos("Important"); // Get important todo's
 todo.set("1", { title: "Updated title" });
 ```
 
-Identical app setup using `memotable` (read friendly)-
+Identical app setup using `memotable` (read-friendly data structure)-
 
 ```ts
 // Table of todos
@@ -90,7 +90,7 @@ const todos = new Table<string, ITodo>();
 todos.index(
     (todo) => [todo.listId, todo.isImportant ? "Important" : null], // Specify which all top-level partitions a todo belongs to
     (p) => {
-        // The default partition within each top-level partition matches applied keyword
+        // Create a sub-partition to contain filtered items
         p.index((todo) => (todo.title.includes(KEYWORD) ? "Filtered" : null));
         p.sort(
             (a, b) =>
@@ -106,6 +106,10 @@ todos.partition("Important").partition("Filtered"); // Get sorted & filtered imp
 
 // Update a todo (identical to vanilla)
 todo.set("1", { title: "Updated title" });
+
+// Whenever keyword updates for a visible partition OR when a new partition becomes visible-
+partition.index(); // Ensures latest keyword filter is applied
+partition.memo(); // Ensure that the results are memoized for fast reads
 ```
 
 ## Semantics
@@ -147,7 +151,7 @@ taskTable.set("1", { listId: "list1", title: "Task" }); // only re-renders "list
 
 ## Live Demo
 
-Check out the [React Todo App example](./examples/react/TodoApp.tsx) — a demo showing how heavy data processing apps can achieve better interactivity using memotable.
+Check out this [example](./examples/react/PerfApp.tsx) — a demo showing how heavy data processing apps can achieve better interactivity using memotable.
 
 **Run it locally:**
 
@@ -166,7 +170,7 @@ You _don't_ need it for simple apps.
 
 ✅ Use it when:
 
-- Your data set is large enough that filtering/sorting frequently can cause visible frame drops (~10ms+). (typically heavy realtime dashboards OR fully-offline apps) **AND**
+- Your data set is large enough that filtering/sorting frequently can cause visible frame drops (~10ms+). (typically heavy realtime dashboards OR fully-offline apps with a lot of user data) **AND**
 - Reads outnumber writes by at least **2-3x**.
 
 ## When _not_ to use memotable
