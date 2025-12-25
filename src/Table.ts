@@ -3,7 +3,7 @@ import { IComparator } from "./contracts/ISortableTable";
 import { IIndexDefinition } from "./contracts/IIndexableTable";
 import { IReadonlyTable } from "./contracts/IReadonlyTable";
 import { ITableSubscriber } from "./contracts/IObservableTable";
-import { IBatch, ITable } from "./contracts/ITable";
+import { ITable, IBatch } from "./contracts/ITable";
 
 /**
  * Table implementation that supports basic CRUD, batching, indexing and sorting.
@@ -41,16 +41,10 @@ export class Table<K, V> implements ITable<K, V> {
             : this._map.keys();
     }
 
-    public values(): MapIterator<V> {
-        // Return the memoized values if available
-        if (this._sortedValues) {
-            return this._sortedValues[Symbol.iterator]();
+    public *values(): MapIterator<V> {
+        for (const key of this.keys()) {
+            yield this._map.get(key)!;
         }
-
-        // Otherwise, if comparator is available sort at read time, else return native iterator
-        return this._comparator
-            ? Array.from(this._map.values()).sort(this._comparator)[Symbol.iterator]()
-            : this._map.values();
     }
 
     public *entries(): MapIterator<[K, V]> {
@@ -186,7 +180,6 @@ export class Table<K, V> implements ITable<K, V> {
 
     // The memoized view of the table that satisfies the current filter and comparator
     private _sortedKeys: K[] | null = null;
-    private _sortedValues: V[] | null = null;
     private _comparator: IComparator<V> | null = null;
 
     public sort(comparator?: IComparator<V> | null) {
@@ -389,16 +382,11 @@ export class Table<K, V> implements ITable<K, V> {
      * Refresh the memoized data based on the current comparator and memoization flag.
      */
     private _refreshMemoizedData(): void {
-        this._sortedKeys = this._sortedValues = null;
+        this._sortedKeys = null;
 
         // Table should be memoized when a comparator is set (otherwise memoization is not helpful)
-        if (this._comparator !== null && this._shouldMemoize) {
+        if (this._shouldMemoize && this._comparator !== null) {
             this._sortedKeys = Array.from(this.keys());
-
-            this._sortedValues = new Array<V>(this._sortedKeys.length);
-            for (let i = 0; i < this._sortedKeys.length; i++) {
-                this._sortedValues![i] = this._map.get(this._sortedKeys[i]!)!;
-            }
         }
     }
 
